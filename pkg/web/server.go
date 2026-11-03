@@ -1359,7 +1359,11 @@ func (s *Server) handleTestUniFi(w http.ResponseWriter, r *http.Request) {
 
 	if err := client.TestConnection(); err != nil {
 		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte(fmt.Sprintf("<div class='badge reject' style='padding: 8px 12px;'>Verbindung fehlgeschlagen: %s</div>", template.HTMLEscapeString(err.Error()))))
+		errMsg := template.HTMLEscapeString(err.Error())
+		if settings.UniFiAuthMode == "apikey" && (strings.Contains(settings.UniFiURL, "127.0.0.1") || strings.Contains(settings.UniFiURL, "localhost")) && (strings.Contains(err.Error(), "401") || strings.Contains(err.Error(), "unauthorized")) {
+			errMsg += "<br><small style='display:block; margin-top: 4px; font-weight: normal; opacity: 0.9;'>Hinweis: UniFi OS weist API-Keys über 127.0.0.1 ab. Bitte tragen Sie die Gateway-/LAN-IP der UDM ein (z. B. https://192.168.1.1 oder https://192.168.13.1).</small>"
+		}
+		_, _ = w.Write([]byte(fmt.Sprintf("<div class='badge reject' style='padding: 8px 12px; line-height: 1.4;'>Verbindung fehlgeschlagen: %s</div>", errMsg)))
 		return
 	}
 

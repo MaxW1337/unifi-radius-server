@@ -9,6 +9,8 @@ import (
 	"io"
 	"net/http"
 	"net/http/cookiejar"
+	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -132,6 +134,7 @@ func (c *Client) doRequest(method, endpoint string, body io.Reader) (*http.Respo
 
 	if c.cfg.AuthMode == "apikey" {
 		req.Header.Set("X-API-KEY", c.cfg.APIKey)
+		req.Header.Set("Authorization", "Bearer "+c.cfg.APIKey)
 	} else if c.csrfToken != "" {
 		req.Header.Set("X-CSRF-Token", c.csrfToken)
 	}
@@ -591,36 +594,102 @@ func (c *Client) GetRadiusSetting() (*UniFiRadiusSetting, error) {
 	return nil, fmt.Errorf("failed to retrieve radius setting from UniFi")
 }
 
+// stopLocalFreeRadius stops and disables the freeradius system service when running directly on Linux/UDM.
+func stopLocalFreeRadius() error {
+	if runtime.GOOS != "linux" {
+		return nil
+	}
+	// Try systemctl first
+	if err := exec.Command("systemctl", "stop", "freeradius").Run(); err == nil {
+		_ = exec.Command("systemctl", "disable", "freeradius").Run()
+		return nil
+	}
+	// Fallback to service command
+	if err := exec.Command("service", "freeradius", "stop").Run(); err == nil {
+		return nil
+	}
+	return errors.New("could not stop freeradius system service locally")
+}
+
 // DisableBuiltinRadius disables UniFi's internal RADIUS server to release UDP port 1812.
 func (c *Client) DisableBuiltinRadius() error {
+	var apiSuccess bool
+	var lastErr error
+
 	current, err := c.GetRadiusSetting()
-	if err != nil {
-		return err
-	}
+	if err == nil && current != nil {
+		current.Enabled = false
+		bodyBytes, mErr := json.Marshal(current)
+		if mErr == nil {
+			// 1. Try POST to /set/setting/radius (UniFi standard action endpoint)
+			endpointsPost := []string{
+				fmt.Sprintf("/proxy/network/api/s/%s/set/setting/radius", c.cfg.Site),
+				fmt.Sprintf("/api/s/%s/set/setting/radius", c.cfg.Site),
+			}
+			for _, ep := range endpointsPost {
+				resp, rErr := c.doRequest(http.MethodPost, ep, bytes.NewReader(bodyBytes))
+				if rErr != nil {
+					lastErr = rErr
+					continue
+				}
+				defer resp.Body.Close()
+				if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+					apiSuccess = true
+					break
+				}
+				lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, ep)
+			}
 
-	current.Enabled = false
-	bodyBytes, err := json.Marshal(current)
-	if err != nil {
-		return err
-	}
+			// 2. Try PUT to /rest/setting/radius/{id} (UniFi REST endpoint)
+			if !apiSuccess && current.ID != "" {
+				endpointsPut := []string{
+					fmt.Sprintf("/proxy/network/api/s/%s/rest/setting/radius/%s", c.cfg.Site, current.ID),
+					fmt.Sprintf("/api/s/%s/rest/setting/radius/%s", c.cfg.Site, current.ID),
+				}
+				for _, ep := range endpointsPut {
+					resp, rErr := c.doRequest(http.MethodPut, ep, bytes.NewReader(bodyBytes))
+					if rErr != nil {
+						lastErr = rErr
+						continue
+					}
+					defer resp.Body.Close()
+					if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+						apiSuccess = true
+						break
+					}
+					lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, ep)
+				}
+			}
 
-	endpoints := []string{
-		fmt.Sprintf("/proxy/network/api/s/%s/set/setting/radius", c.cfg.Site),
-		fmt.Sprintf("/api/s/%s/set/setting/radius", c.cfg.Site),
-	}
-
-	for _, ep := range endpoints {
-		resp, err := c.doRequest(http.MethodPut, ep, bytes.NewReader(bodyBytes))
-		if err != nil {
-			continue
+			// 3. Fallback: PUT to /set/setting/radius (for mock/legacy compatibility)
+			if !apiSuccess {
+				for _, ep := range endpointsPost {
+					resp, rErr := c.doRequest(http.MethodPut, ep, bytes.NewReader(bodyBytes))
+					if rErr != nil {
+						continue
+					}
+					defer resp.Body.Close()
+					if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+						apiSuccess = true
+						break
+					}
+				}
+			}
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-			return nil
-		}
+	} else if err != nil {
+		lastErr = err
 	}
 
+	// 4. On Linux (UDM), directly stop & disable the freeradius system service
+	localStopErr := stopLocalFreeRadius()
+
+	if apiSuccess || localStopErr == nil {
+		return nil
+	}
+
+	if lastErr != nil {
+		return fmt.Errorf("failed to disable builtin RADIUS server in UniFi: %w", lastErr)
+	}
 	return fmt.Errorf("failed to disable builtin RADIUS server in UniFi")
 }
 
