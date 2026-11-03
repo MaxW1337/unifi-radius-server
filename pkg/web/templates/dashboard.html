@@ -1,4 +1,23 @@
 {{define "content"}}
+{{if not .RadiusListening}}
+<div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 8px; padding: 16px 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;">
+  <div style="display: flex; align-items: flex-start; gap: 14px; flex: 1; min-width: 280px;">
+    <div style="color: #ef4444; flex-shrink: 0; margin-top: 2px;">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+    </div>
+    <div>
+      <div style="font-weight: 600; color: #ef4444; font-size: 15px;">{{tr .Lang "dash.port_blocked_title" .RadiusPort}}</div>
+      <div style="font-size: 13px; color: var(--text-secondary); margin-top: 4px; line-height: 1.5;">
+        {{tr .Lang "dash.port_blocked_desc" .RadiusPort}}
+      </div>
+    </div>
+  </div>
+  <a href="/settings" class="btn btn-danger" style="white-space: nowrap; font-size: 13px; text-decoration: none; padding: 8px 16px;">
+    {{tr .Lang "dash.port_blocked_btn"}} &rarr;
+  </a>
+</div>
+{{end}}
+
 <!-- Top Stats Grid -->
 <div class="stats-grid">
   <div class="stat-card">

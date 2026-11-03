@@ -128,6 +128,12 @@ if systemctl is-active --quiet "${SERVICE_NAME}"; then
     echo "  RADIUS Port:    UDP 1812"
     echo "  Data Directory: ${INSTALL_DIR}"
     echo ""
+    if systemctl is-active --quiet freeradius 2>/dev/null; then
+        echo "  [!] Notice: UniFi built-in FreeRADIUS is currently running on UDP 1812."
+        echo "      Open http://${UDM_IP}:9182 -> 'Settings' -> 'UniFi Migration' to migrate"
+        echo "      your RADIUS setup. This server will bind port 1812 automatically once released."
+        echo ""
+    fi
     echo "  Next steps:"
     echo "  1. Open http://${UDM_IP}:9182 in your browser to set your admin password."
     echo "  2. Go to 'Settings' and enter your UniFi API Key."

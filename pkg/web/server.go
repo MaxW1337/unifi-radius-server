@@ -27,6 +27,7 @@ import (
 	"github.com/mwittenburg/unifi-radius-server/pkg/i18n"
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
 	"github.com/mwittenburg/unifi-radius-server/pkg/notify"
+	"github.com/mwittenburg/unifi-radius-server/pkg/radius"
 	"github.com/mwittenburg/unifi-radius-server/pkg/unifi"
 	"github.com/mwittenburg/unifi-radius-server/pkg/updater"
 	"golang.org/x/crypto/bcrypt"
@@ -125,6 +126,7 @@ type Server struct {
 	db          *database.DB
 	bus         *eventbus.Bus
 	syncSvc     *unifi.SyncService
+	radiusSrv   *radius.Server
 	notifySvc   *notify.Service
 	backupSvc   *backup.Service
 	updater     *updater.Service
@@ -148,7 +150,7 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 
 	ver := "1.0.0"
 	if len(version) > 0 && version[0] != "" {
-		ver = version[0]
+		ver = strings.TrimPrefix(version[0], "v")
 	}
 
 	funcMap := template.FuncMap{
@@ -267,6 +269,16 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 	}
 
 	return s, nil
+}
+
+// SetRadiusServer sets or overrides the RADIUS engine reference.
+func (s *Server) SetRadiusServer(r *radius.Server) {
+	s.radiusSrv = r
+}
+
+// RadiusServer returns the RADIUS engine reference.
+func (s *Server) RadiusServer() *radius.Server {
+	return s.radiusSrv
 }
 
 // SetNotifyService sets or overrides the notification service.
@@ -1627,6 +1639,20 @@ func (s *Server) renderPage(w http.ResponseWriter, r *http.Request, tmplName str
 		}
 		if _, ok := data["Version"]; !ok {
 			data["Version"] = s.version
+		}
+		if _, ok := data["RadiusListening"]; !ok {
+			if s.radiusSrv != nil {
+				data["RadiusListening"] = s.radiusSrv.IsListening()
+			} else {
+				data["RadiusListening"] = true
+			}
+		}
+		if _, ok := data["RadiusPort"]; !ok {
+			if s.radiusSrv != nil {
+				data["RadiusPort"] = s.radiusSrv.Port()
+			} else {
+				data["RadiusPort"] = 1812
+			}
 		}
 	}
 

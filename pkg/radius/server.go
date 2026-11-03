@@ -45,6 +45,8 @@ type Server struct {
 	numWorkers  int
 	stopChan    chan struct{}
 	wg          sync.WaitGroup
+	mu          sync.RWMutex
+	listening   bool
 }
 
 // NewServer initializes a high-concurrency RADIUS server instance.
@@ -90,24 +92,60 @@ func (s *Server) ReloadCache() error {
 }
 
 // Start opens the UDP listener with enlarged kernel buffers and spawns the worker pool.
+// If the port is currently in use (e.g. by UniFi's built-in FreeRADIUS daemon),
+// it keeps the server running and automatically retries binding in the background
+// so the Web UI remains available for migration or configuration.
 func (s *Server) Start(ctx context.Context) error {
+	// Start asynchronous batch database writer
+	s.batchWriter.Start(ctx)
+
+	go func() {
+		<-ctx.Done()
+		s.Stop()
+	}()
+
+	// Spawn concurrent worker pool once
+	for i := 0; i < s.numWorkers; i++ {
+		s.wg.Add(1)
+		go s.worker(i)
+	}
+
+	// Try initial listen
 	addr := net.UDPAddr{
 		Port: s.port,
 		IP:   net.ParseIP("0.0.0.0"),
 	}
 
 	conn, err := net.ListenUDP("udp", &addr)
-	if err != nil {
-		return fmt.Errorf("failed to bind RADIUS UDP socket on port %d: %w", s.port, err)
+	if err == nil {
+		s.setupAndServe(conn)
+		return nil
 	}
+
+	// Port is occupied (e.g. built-in FreeRADIUS) or network error
+	log.Printf("[WARN] [RADIUS] Port %d ist belegt (%v). Webinterface bleibt aktiv. Starte automatische Wiederholungsversuche alle 3 Sekunden...", s.port, err)
+	s.bus.PublishLog(eventbus.LogEvent{
+		Timestamp: time.Now().Format("15:04:05"),
+		Level:     eventbus.LogLevelWarn,
+		Source:    "RADIUS",
+		Message:   fmt.Sprintf("UDP-Port %d ist belegt (%v, vermutlich UniFi FreeRADIUS). Bitte unter 'Einstellungen -> UniFi Migration' migrieren. Wiederhole Bind-Versuche...", s.port, err),
+	})
+
+	// Retry loop in background
+	go s.listenLoop(ctx)
+
+	return nil
+}
+
+func (s *Server) setupAndServe(conn *net.UDPConn) {
+	s.mu.Lock()
 	s.conn = conn
+	s.listening = true
+	s.mu.Unlock()
 
 	// Maximize socket kernel buffers to prevent packet drops during heavy bursts (e.g. switch reboot storm)
 	_ = s.conn.SetReadBuffer(4 * 1024 * 1024)  // 4 MB socket read buffer
 	_ = s.conn.SetWriteBuffer(4 * 1024 * 1024) // 4 MB socket write buffer
-
-	// Start asynchronous batch database writer
-	s.batchWriter.Start(ctx)
 
 	log.Printf("[RADIUS] High-Performance Server listening on UDP :%d (%d worker threads, in-memory cache active)", s.port, s.numWorkers)
 	s.bus.PublishLog(eventbus.LogEvent{
@@ -117,21 +155,56 @@ func (s *Server) Start(ctx context.Context) error {
 		Message:   fmt.Sprintf("RADIUS service listening on UDP port %d (%d worker threads)", s.port, s.numWorkers),
 	})
 
-	go func() {
-		<-ctx.Done()
-		s.Stop()
-	}()
-
-	// Spawn concurrent worker pool
-	for i := 0; i < s.numWorkers; i++ {
-		s.wg.Add(1)
-		go s.worker(i)
-	}
-
 	s.wg.Add(1)
 	go s.serve()
+}
 
-	return nil
+func (s *Server) listenLoop(ctx context.Context) {
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.stopChan:
+			return
+		case <-ticker.C:
+			s.mu.RLock()
+			alreadyListening := s.listening
+			port := s.port
+			s.mu.RUnlock()
+
+			if alreadyListening {
+				return
+			}
+
+			addr := net.UDPAddr{
+				Port: port,
+				IP:   net.ParseIP("0.0.0.0"),
+			}
+			conn, err := net.ListenUDP("udp", &addr)
+			if err == nil {
+				log.Printf("[RADIUS] UDP-Port %d erfolgreich gebunden!", port)
+				s.setupAndServe(conn)
+				return
+			}
+		}
+	}
+}
+
+// IsListening returns true if the UDP socket is actively bound and receiving packets.
+func (s *Server) IsListening() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.listening
+}
+
+// Port returns the configured UDP port for the RADIUS server.
+func (s *Server) Port() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.port
 }
 
 // Stop cleanly terminates the UDP listener, drains queues, and flushes database batches.
@@ -142,9 +215,12 @@ func (s *Server) Stop() {
 	default:
 		close(s.stopChan)
 	}
+	s.mu.Lock()
+	s.listening = false
 	if s.conn != nil {
 		s.conn.Close()
 	}
+	s.mu.Unlock()
 	s.batchWriter.Stop()
 	s.wg.Wait()
 	log.Println("[RADIUS] Server stopped cleanly.")

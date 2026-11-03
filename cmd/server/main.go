@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -82,8 +83,10 @@ func main() {
 		os.Exit(0)
 	}
 
+	displayVersion := strings.TrimPrefix(Version, "v")
+
 	log.Println("=========================================================")
-	log.Printf(" Starting UniFi RADIUS Server v%s (%s/%s)", Version, runtime.GOOS, runtime.GOARCH)
+	log.Printf(" Starting UniFi RADIUS Server v%s (%s/%s)", displayVersion, runtime.GOOS, runtime.GOARCH)
 	log.Println(" Optimized for UniFi Dream Machine Pro & SE (UDM)")
 	log.Println("=========================================================")
 	log.Printf("[DB] SQLite database initialized at %s", *dbPathFlag)
@@ -124,6 +127,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Fatal: failed to initialize web server: %v", err)
 	}
+	webSrv.SetRadiusServer(radiusSrv)
 	notifySvc := webSrv.NotifyService()
 	backupSvc := webSrv.BackupService()
 
@@ -145,7 +149,7 @@ func main() {
 
 	go func() {
 		if err := radiusSrv.Start(ctx); err != nil {
-			log.Fatalf("Fatal: RADIUS server error: %v", err)
+			log.Printf("[RADIUS] Error starting RADIUS server: %v", err)
 		}
 	}()
 
@@ -175,7 +179,11 @@ func main() {
 	}()
 
 	log.Printf("[Ready] Web UI available at: http://localhost:%d", webPort)
-	log.Printf("[Ready] RADIUS listening on UDP port: %d", radiusPort)
+	if radiusSrv.IsListening() {
+		log.Printf("[Ready] RADIUS listening on UDP port: %d", radiusPort)
+	} else {
+		log.Printf("[Notice] RADIUS waiting to bind UDP port %d (waiting for FreeRADIUS migration/stop)", radiusPort)
+	}
 
 	// Wait for shutdown signal
 	sig := <-sigChan

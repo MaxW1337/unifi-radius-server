@@ -3,7 +3,9 @@ package radius
 import (
 	"context"
 	"crypto/rand"
+	"fmt"
 	"net"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -313,6 +315,112 @@ func TestConcurrentHighLoadRequests(t *testing.T) {
 
 	if len(errs) > 0 {
 		t.Fatalf("High load test encountered %d errors out of %d requests: %v", len(errs), totalRequests, errs[0])
+	}
+}
+
+func TestServerPortConflictAndRetryBinding(t *testing.T) {
+	testPort := 18129
+	addr := net.UDPAddr{
+		Port: testPort,
+		IP:   net.ParseIP("0.0.0.0"),
+	}
+
+	// 1. Simulate existing process (e.g. FreeRADIUS) binding the port
+	occupyingConn, err := net.ListenUDP("udp", &addr)
+	if err != nil {
+		t.Fatalf("Failed to occupy test port %d: %v", testPort, err)
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "radius_conflict.db")
+	db, err := database.Open(dbPath)
+	if err != nil {
+		occupyingConn.Close()
+		t.Fatalf("database.Open failed: %v", err)
+	}
+	defer db.Close()
+
+	settings, _ := db.GetSettings()
+	settings.GlobalSharedSecret = "retry_test_secret"
+	_ = db.UpdateSettings(settings)
+
+	// Create test client in DB
+	vlan := 10
+	_ = db.CreateClient(&models.Client{
+		MACAddress: "00:AA:BB:CC:DD:EE",
+		VLANID:     &vlan,
+		Status:     models.ClientStatusActive,
+		AuthType:   models.AuthTypeMAB,
+	})
+
+	bus := eventbus.NewBus(50)
+	srv := NewServer(db, bus, testPort)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// 2. Start server while port is occupied. Should NOT return fatal error.
+	if err := srv.Start(ctx); err != nil {
+		occupyingConn.Close()
+		t.Fatalf("Expected non-fatal Start, got error: %v", err)
+	}
+	defer srv.Stop()
+
+	// Server should report not listening initially
+	if srv.IsListening() {
+		occupyingConn.Close()
+		t.Fatal("Expected IsListening() to be false when port is occupied")
+	}
+
+	// 3. Free the port (simulating migration / stopping FreeRADIUS)
+	occupyingConn.Close()
+
+	// 4. Wait for background retry loop to bind the port
+	deadline := time.Now().Add(5 * time.Second)
+	bound := false
+	for time.Now().Before(deadline) {
+		if srv.IsListening() {
+			bound = true
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	if !bound {
+		t.Fatal("Server failed to automatically bind port after it was freed")
+	}
+
+	// 5. Send Access-Request to verify active packet processing
+	serverAddr, _ := net.ResolveUDPAddr("udp", fmt.Sprintf("127.0.0.1:%d", testPort))
+	clientConn, err := net.DialUDP("udp", nil, serverAddr)
+	if err != nil {
+		t.Fatalf("DialUDP failed: %v", err)
+	}
+	defer clientConn.Close()
+	clientConn.SetDeadline(time.Now().Add(2 * time.Second))
+
+	req := &Packet{
+		Code:       CodeAccessRequest,
+		Identifier: 42,
+	}
+	_, _ = rand.Read(req.Authenticator[:])
+	req.AddString(AttrUserName, "00aabbccddee")
+	reqBytes, _ := req.Encode([]byte("retry_test_secret"))
+
+	if _, err := clientConn.Write(reqBytes); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	replyBuf := make([]byte, 1024)
+	n, err := clientConn.Read(replyBuf)
+	if err != nil {
+		t.Fatalf("Read reply failed after port takeover: %v", err)
+	}
+
+	resp, err := ParsePacket(replyBuf[:n])
+	if err != nil {
+		t.Fatalf("ParsePacket failed: %v", err)
+	}
+	if resp.Code != CodeAccessAccept {
+		t.Errorf("Expected CodeAccessAccept, got %d", resp.Code)
 	}
 }
 

@@ -79,6 +79,9 @@ var translations = map[string]map[string]string{
 		"dash.th_switch":        "Switch & Port",
 		"dash.th_latency":       "Latenz",
 		"dash.waiting_requests": "Warte auf eingehende RADIUS-Authentifizierungsanfragen...",
+		"dash.port_blocked_title": "RADIUS-Dienst nicht aktiv (UDP-Port %d belegt)",
+		"dash.port_blocked_desc":  "Der RADIUS-Port %d wird aktuell von einem anderen Dienst blockiert (vermutlich UniFi FreeRADIUS). Führen Sie unter 'Einstellungen' die UniFi Migration durch, um den Server zu aktivieren. Sobald der Port frei wird, bindet sich der Server automatisch ohne Neustart an den Port.",
+		"dash.port_blocked_btn":   "Zur UniFi Migration",
 
 		// Clients
 		"clients.title":            "MAB Geräte & Benutzer",
@@ -342,6 +345,9 @@ var translations = map[string]map[string]string{
 		"dash.th_switch":        "Switch & Port",
 		"dash.th_latency":       "Latency",
 		"dash.waiting_requests": "Waiting for incoming RADIUS authentication requests...",
+		"dash.port_blocked_title": "RADIUS Service Inactive (UDP Port %d Occupied)",
+		"dash.port_blocked_desc":  "The RADIUS port %d is currently occupied by another service (likely UniFi FreeRADIUS). Please complete the UniFi Migration under Settings to activate this server. Once the port is freed, this server binds automatically without a restart.",
+		"dash.port_blocked_btn":   "Go to UniFi Migration",
 
 		// Clients
 		"clients.title":            "MAB Devices & Users",
