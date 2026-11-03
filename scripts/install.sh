@@ -3,10 +3,10 @@ set -e
 
 # ==============================================================================
 # UniFi RADIUS Server - UDM-Pro / UDM-SE Installer
-# https://github.com/mwittenburg/unifi-radius-server
+# https://github.com/MaxW1337/unifi-radius-server
 # ==============================================================================
 
-REPO="mwittenburg/unifi-radius-server"
+REPO="MaxW1337/unifi-radius-server"
 INSTALL_DIR="/data/unifi-radius"
 SERVICE_NAME="unifi-radius"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"

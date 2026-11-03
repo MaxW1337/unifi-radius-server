@@ -180,7 +180,7 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 	}
 	pages["login.html"] = loginTmpl
 
-	updaterSvc := updater.NewService(ver, "mwittenburg", "unifi-radius-server")
+	updaterSvc := updater.NewService(ver, "MaxW1337", "unifi-radius-server")
 
 	s := &Server{
 		db:         db,

@@ -1,12 +1,13 @@
 # UniFi RADIUS Server
 
-[![Build & Test](https://github.com/mwittenburg/unifi-radius-server/actions/workflows/build.yml/badge.svg)](https://github.com/mwittenburg/unifi-radius-server/actions/workflows/build.yml)
-[![Release](https://github.com/mwittenburg/unifi-radius-server/actions/workflows/release.yml/badge.svg)](https://github.com/mwittenburg/unifi-radius-server/releases)
+[![Build & Test](https://github.com/MaxW1337/unifi-radius-server/actions/workflows/build.yml/badge.svg)](https://github.com/MaxW1337/unifi-radius-server/actions/workflows/build.yml)
+[![Security Scanning](https://github.com/MaxW1337/unifi-radius-server/actions/workflows/security.yml/badge.svg)](https://github.com/MaxW1337/unifi-radius-server/actions/workflows/security.yml)
+[![Release](https://github.com/MaxW1337/unifi-radius-server/actions/workflows/release.yml/badge.svg)](https://github.com/MaxW1337/unifi-radius-server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 Ein leichtgewichtiger, robuster und autarker **RADIUS-Server in Go**, der direkt nativ auf der **UniFi Dream Machine Pro (UDM-Pro)** und **UDM-SE** (UniFi OS 3.x / 4.x, ARM64) läuft.
 
-![UniFi RADIUS Server](https://raw.githubusercontent.com/mwittenburg/unifi-radius-server/main/docs/preview.png)
+![UniFi RADIUS Server](https://raw.githubusercontent.com/MaxW1337/unifi-radius-server/main/docs/preview.png)
 
 ---
 
@@ -37,7 +38,7 @@ Ein leichtgewichtiger, robuster und autarker **RADIUS-Server in Go**, der direkt
 Verbinde dich per SSH mit deiner UDM-Pro oder UDM-SE und führe folgenden Befehl aus:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/mwittenburg/unifi-radius-server/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/MaxW1337/unifi-radius-server/main/scripts/install.sh | bash
 ```
 
 ### Was das Skript macht:
@@ -50,7 +51,7 @@ curl -fsSL https://raw.githubusercontent.com/mwittenburg/unifi-radius-server/mai
 
 ### Alternative: Installation via Debian-Paket (.deb)
 
-Von der [Releases-Seite](https://github.com/mwittenburg/unifi-radius-server/releases) das passende `.deb`-Paket herunterladen und installieren:
+Von der [Releases-Seite](https://github.com/MaxW1337/unifi-radius-server/releases) das passende `.deb`-Paket herunterladen und installieren:
 
 ```bash
 dpkg -i unifi-radius_*_arm64.deb
