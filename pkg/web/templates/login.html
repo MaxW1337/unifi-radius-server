@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{tr .Lang "login.title"}} - {{tr .Lang "login.btn_login"}}</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body style="display: flex; align-items: center; justify-content: center; min-height: 100vh;">
+
+  <div class="login-container">
+    <div class="login-card">
+      <div style="display: flex; justify-content: flex-end; margin-bottom: 12px;">
+        <div class="lang-switch" title="Sprache wählen / Select language">
+          <a href="/api/set-language?lang=de&redirect=/login" class="{{if eq .Lang "de"}}active{{end}}">DE</a>
+          <span class="divider">|</span>
+          <a href="/api/set-language?lang=en&redirect=/login" class="{{if eq .Lang "en"}}active{{end}}">EN</a>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px; justify-content: center;">
+        <div class="brand-icon" style="width: 40px; height: 40px; font-size: 20px;">U</div>
+        <div>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <h2 style="font-size: 18px; font-weight: 700; margin: 0;">{{tr .Lang "login.title"}}</h2>
+            <span style="background: rgba(255, 255, 255, 0.08); border: 1px solid var(--border-color); color: var(--text-muted); font-size: 11px; padding: 2px 7px; border-radius: 10px; font-weight: 600;">v{{.Version}}</span>
+          </div>
+          <span style="font-size: 12px; color: var(--text-dim); text-transform: uppercase;">{{tr .Lang "login.subtitle"}}</span>
+        </div>
+      </div>
+
+      {{if .Error}}
+        <div style="background-color: var(--red-bg); border: 1px solid rgba(239, 68, 68, 0.3); color: var(--red); padding: 10px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 20px;">
+          {{.Error}}
+        </div>
+      {{end}}
+
+      {{if .IsInitialSetup}}
+        <div style="background-color: rgba(0, 111, 255, 0.15); border: 1px solid rgba(0, 111, 255, 0.3); color: #38bdf8; padding: 12px 14px; border-radius: 8px; font-size: 13px; margin-bottom: 20px;">
+          <strong>{{tr .Lang "login.setup_notice"}}</strong>
+        </div>
+      {{end}}
+
+      <form method="POST" action="/login">
+        <div class="form-group">
+          <label class="form-label">{{if .IsInitialSetup}}{{tr .Lang "login.new_password"}}{{else}}{{tr .Lang "login.password"}}{{end}}</label>
+          <input type="password" name="password" required autofocus class="form-control" placeholder="••••••••••••">
+        </div>
+
+        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 10px;">
+          {{if .IsInitialSetup}}{{tr .Lang "login.btn_setup"}}{{else}}{{tr .Lang "login.btn_login"}}{{end}}
+        </button>
+      </form>
+
+      <div style="margin-top: 24px; text-align: center; font-size: 11px; color: var(--text-dim); display: flex; align-items: center; justify-content: center; gap: 6px;">
+        <span>{{tr .Lang "login.footer_info" .Version .Port}}</span>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
+

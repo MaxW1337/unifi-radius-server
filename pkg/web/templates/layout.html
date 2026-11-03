@@ -1,0 +1,184 @@
+{{define "layout"}}
+<!DOCTYPE html>
+<html lang="{{.Lang}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{.Title}} - UniFi RADIUS</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js"></script>
+  <script src="/static/htmx-ws.js"></script>
+</head>
+<body hx-ext="ws" ws-connect="/ws/feed">
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-icon">U</div>
+      <div class="brand-text">
+        <h1>UniFi RADIUS</h1>
+        <span>UDM Edition</span>
+      </div>
+    </div>
+
+    <ul class="nav-links">
+      <li class="nav-item">
+        <a href="/" class="nav-link {{if eq .ActiveNav "dashboard"}}active{{end}}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+          {{tr .Lang "nav.dashboard"}}
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/clients" class="nav-link {{if eq .ActiveNav "clients"}}active{{end}}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          {{tr .Lang "nav.clients"}}
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/certificates" class="nav-link {{if eq .ActiveNav "certificates"}}active{{end}}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          {{tr .Lang "nav.certificates"}}
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/logs" class="nav-link {{if eq .ActiveNav "logs"}}active{{end}}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+          {{tr .Lang "nav.logs"}}
+        </a>
+      </li>
+      <li class="nav-item">
+        <a href="/settings" class="nav-link {{if eq .ActiveNav "settings"}}active{{end}}">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          {{tr .Lang "nav.settings"}}
+        </a>
+      </li>
+    </ul>
+
+    <div class="sidebar-footer">
+      <div style="font-size: 11px; color: var(--text-dim); margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
+        <span>v{{.Version}}</span>
+        <span id="sidebar-update-badge" hx-get="/api/update/check?view=badge" hx-trigger="load" hx-swap="outerHTML"></span>
+      </div>
+      <div class="live-indicator">
+        <span class="pulse-dot"></span>
+        <span>{{tr .Lang "common.online"}}</span>
+      </div>
+      <a href="/logout" style="color: var(--text-dim); text-decoration: none;" title="{{tr .Lang "common.logout"}}">{{tr .Lang "common.logout"}}</a>
+    </div>
+  </aside>
+
+  <!-- Main Content Wrapper -->
+  <div class="main-wrapper">
+    <header class="topbar">
+      <div class="topbar-title">
+        <h2>{{.PageTitle}}</h2>
+      </div>
+      <div class="topbar-actions">
+        <div class="lang-switch" title="Sprache wählen / Select language">
+          <a href="/api/set-language?lang=de&redirect={{.CurrentPath}}" class="{{if eq .Lang "de"}}active{{end}}">DE</a>
+          <span class="divider">|</span>
+          <a href="/api/set-language?lang=en&redirect={{.CurrentPath}}" class="{{if eq .Lang "en"}}active{{end}}">EN</a>
+        </div>
+        <button id="unifi-sync-btn" class="btn btn-secondary btn-sm sync-btn" hx-post="/api/unifi/sync" hx-swap="none" title="{{tr .Lang "common.sync_tooltip"}}">
+          <svg class="sync-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          <span class="sync-text-idle">{{tr .Lang "common.unifi_sync"}}</span>
+          <span class="sync-text-busy">{{tr .Lang "common.syncing"}}</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="content-body">
+      <!-- Automatischer Update-Check nach Login (asynchron & non-blocking) -->
+      <div id="update-notification" hx-get="/api/update/check" hx-trigger="load" hx-swap="outerHTML"></div>
+
+      {{template "content" .}}
+    </main>
+  </div>
+
+  <!-- Browser Timezone Localization Script -->
+  <script>
+  function localizeTimes(root = document) {
+    if (!root || !root.querySelectorAll) return;
+    root.querySelectorAll('time.local-time').forEach(el => {
+      const dt = el.getAttribute('datetime');
+      if (!dt) return;
+      const d = new Date(dt);
+      if (isNaN(d.getTime())) return;
+      const fmt = el.getAttribute('data-format') || 'datetime';
+      if (fmt === 'time') {
+        el.textContent = d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      } else if (fmt === 'date') {
+        el.textContent = d.toLocaleDateString([], { year: 'numeric', month: '2-digit', day: '2-digit' });
+      } else {
+        el.textContent = d.toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => localizeTimes());
+  document.body.addEventListener('htmx:afterSwap', (e) => localizeTimes(e.detail.target || document));
+  document.body.addEventListener('htmx:wsAfterMessage', () => localizeTimes());
+  document.body.addEventListener('htmx:afterRequest', function(evt) {
+    if (evt.detail && evt.detail.elt && evt.detail.elt.id === 'unifi-sync-btn') {
+      const btn = evt.detail.elt;
+      btn.classList.add('sync-success');
+      setTimeout(function() {
+        btn.classList.remove('sync-success');
+      }, 2500);
+    }
+  });
+
+  const timeObserver = new MutationObserver((mutations) => {
+    for (const m of mutations) {
+      if (m.addedNodes.length > 0) {
+        m.addedNodes.forEach(node => {
+          if (node.nodeType === 1) localizeTimes(node);
+        });
+      }
+    }
+  });
+  timeObserver.observe(document.body, { childList: true, subtree: true });
+
+  function showToast(message, isError) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+    const toast = document.createElement('div');
+    toast.style.background = isError ? 'var(--red, #ef4444)' : 'var(--accent-blue, #0066cc)';
+    toast.style.color = '#fff';
+    toast.style.padding = '10px 16px';
+    toast.style.borderRadius = '6px';
+    toast.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
+    toast.style.fontSize = '13px';
+    toast.style.fontWeight = '500';
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+    toast.style.transform = 'translateY(10px)';
+    toast.textContent = message;
+    container.appendChild(toast);
+    requestAnimationFrame(() => {
+      toast.style.opacity = '1';
+      toast.style.transform = 'translateY(0)';
+    });
+    setTimeout(() => {
+      toast.style.opacity = '0';
+      toast.style.transform = 'translateY(10px)';
+      setTimeout(() => toast.remove(), 250);
+    }, 3500);
+  }
+
+  document.body.addEventListener('showToast', function(evt) {
+    if (evt.detail && evt.detail.value) {
+      showToast(evt.detail.value);
+    } else if (typeof evt.detail === 'string') {
+      showToast(evt.detail);
+    }
+  });
+  </script>
+
+  <!-- Floating Toast Notifications -->
+  <div id="toast-container" style="position: fixed; bottom: 24px; right: 24px; z-index: 10000; display: flex; flex-direction: column; gap: 8px; pointer-events: none;"></div>
+
+</body>
+</html>
+{{end}}
+

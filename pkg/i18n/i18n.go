@@ -1,0 +1,612 @@
+package i18n
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+)
+
+// Supported languages
+const (
+	LangDE = "de"
+	LangEN = "en"
+)
+
+var translations = map[string]map[string]string{
+	LangDE: {
+		// Common
+		"common.online":          "Online (WebSocket)",
+		"common.logout":          "Abmelden",
+		"common.save":            "Speichern",
+		"common.cancel":          "Abbrechen",
+		"common.delete":          "Löschen",
+		"common.edit":            "Bearbeiten",
+		"common.approve":         "Freigeben",
+		"common.filter":          "Filtern",
+		"common.all":             "Alle",
+		"common.unknown":         "Unbekannt",
+		"common.latency":         "Latenz",
+		"common.status":          "Status",
+		"common.actions":         "Aktionen",
+		"common.never":           "Nie",
+		"common.active":          "Aktiv",
+		"common.pending":         "Ausstehend",
+		"common.disabled":        "Deaktiviert",
+		"common.valid":           "Gültig",
+		"common.revoked":         "Gesperrt",
+		"common.generate":        "Generieren",
+		"common.copy":            "Kopieren",
+		"common.copied":          "Kopiert!",
+		"common.unifi_sync":      "UniFi Sync",
+		"common.syncing":         "Synchronisiere...",
+		"common.sync_done":       "Synchronisiert!",
+		"common.sync_tooltip":    "VLANs, Switches & Geräte jetzt synchronisieren",
+
+		// Nav
+		"nav.dashboard":    "Live Monitor",
+		"nav.clients":      "Clients",
+		"nav.certificates": "Zertifikate (CA)",
+		"nav.logs":         "Live Logs & Audit",
+		"nav.settings":     "Einstellungen",
+
+		// Login
+		"login.title":         "UniFi RADIUS",
+		"login.subtitle":      "UDM-Pro & UDM-SE",
+		"login.password":      "Admin-Passwort",
+		"login.new_password":  "Neues Admin-Passwort festlegen",
+		"login.btn_login":     "Anmelden",
+		"login.btn_setup":     "Passwort speichern & Anmelden",
+		"login.setup_notice":  "Ersteinrichtung: Bitte vergeben Sie ein sicheres Admin-Passwort für den Zugriff auf diesen Server.",
+		"login.error_invalid": "Ungültiges Admin-Passwort.",
+		"login.error_minlen":  "Das Passwort muss mindestens 4 Zeichen lang sein.",
+		"login.error_rate_limit": "Zu viele Fehlversuche. Bitte warte 2 Minuten vor dem nächsten Versuch.",
+		"login.footer_info":   "UniFi RADIUS Server v%s • Port %d",
+
+		// Dashboard
+		"dash.title":            "RADIUS Live Monitor",
+		"dash.total_clients":    "Registrierte Geräte",
+		"dash.active_clients":   "Aktiv (Freigegeben)",
+		"dash.pending_clients":  "Pending (Neu erkannt)",
+		"dash.unifi_vlans":      "UniFi VLANs",
+		"dash.feed_title":       "Echtzeit RADIUS-Aktivitätsmonitor",
+		"dash.feed_subtitle":    "Live eingehende MAB- und 802.1X Authentifizierungsanfragen (WebSockets)",
+		"dash.feed_streaming":   "Live Streaming",
+		"dash.th_time":          "Zeitstempel",
+		"dash.th_result":        "Ergebnis",
+		"dash.th_client":        "Client MAC / Kennung",
+		"dash.th_vlan":          "VLAN",
+		"dash.th_device":        "UniFi Gerät / Hersteller",
+		"dash.th_switch":        "Switch & Port",
+		"dash.th_latency":       "Latenz",
+		"dash.waiting_requests": "Warte auf eingehende RADIUS-Authentifizierungsanfragen...",
+
+		// Clients
+		"clients.title":            "MAB Geräte & Benutzer",
+		"clients.subtitle":         "Autorisierte MAC-Adressen (MAB) und 802.1X Benutzer mit dynamischer VLAN-Zuweisung",
+		"clients.btn_add":          "+ Neues Gerät / Benutzer",
+		"clients.tab_mab":          "Gerät (MAB)",
+		"clients.tab_user":         "Benutzer (802.1X / PAP)",
+		"clients.label_username":   "Benutzername",
+		"clients.username_hint":    "z. B. vorname.nachname oder mitarbeiter1",
+		"clients.label_password":   "Passwort",
+		"clients.password_ph":      "Sicheres Passwort vergeben",
+		"clients.password_edit_hint": "Leer lassen, um das bestehende Passwort beizubehalten",
+		"clients.filter_type_all":  "Alle Typen",
+		"clients.filter_type_mab":  "Nur Geräte (MAB)",
+		"clients.filter_type_user": "Nur Benutzer (Konto)",
+		"clients.search_ph":        "Suche nach MAC, Name, VLAN...",
+		"clients.filter_all":       "Alle Status",
+		"clients.filter_active":    "Nur Aktive",
+		"clients.filter_pending":   "Nur Pending (Neu)",
+		"clients.filter_disabled":  "Nur Deaktivierte",
+		"clients.filter_all_vlans": "Alle VLANs",
+		"clients.clear_filter":     "Filter zurücksetzen",
+		"clients.th_mac":           "MAC-Adresse / Kennung",
+		"clients.th_vlan":          "VLAN-Zuweisung",
+		"clients.th_desc":          "Beschreibung / Besitzer",
+		"clients.th_unifi_info":    "UniFi Info & Switch-Port",
+		"clients.th_last_seen":     "Zuletzt gesehen",
+		"clients.no_unifi_info":    "Keine UniFi Infos",
+		"clients.empty_list":       "Keine Geräte oder Clients gefunden.",
+		"clients.modal_add_title":  "Neuen Client hinzufügen",
+		"clients.modal_edit_title": "Client bearbeiten",
+		"clients.label_mac":        "MAC-Adresse",
+		"clients.mac_hint":         "Unterstützt Formate wie AA:BB:CC:DD:EE:FF, aabbccddeeff",
+		"clients.label_vlan":       "VLAN-Zuweisung",
+		"clients.vlan_default":     "Default VLAN verwenden",
+		"clients.label_desc":       "Beschreibung / Notiz (optional)",
+		"clients.desc_ph":          "z. B. Smart-TV Wohnzimmer, Drucker Büro",
+		"clients.label_status":     "Status",
+		"clients.confirm_delete":   "Möchtest du dieses Gerät wirklich löschen?",
+		"clients.btn_restart_port":         "Port neu starten",
+		"clients.btn_restart_port_tooltip": "Switch-Port über UniFi neu starten (Power-Cycle & Reconnect)",
+		"clients.btn_port":                 "Port",
+		"clients.btn_reconnect":             "Neu verbinden",
+		"clients.btn_reconnect_short":       "Reconnect",
+		"clients.btn_reconnect_tooltip":     "Client über UniFi trennen und neu verbinden (Kick)",
+		"clients.reconnect_on_save":         "Nach Speichern sofort Reconnect / Port-Neustart ausführen",
+		"clients.reconnect_hint":            "Trennt das Gerät kurz vom Netzwerk, damit die neue VLAN-Zuweisung sofort per DHCP übernommen wird.",
+		"clients.port_restarted":            "Befehl für Port-Neustart & Reconnect an UniFi gesendet.",
+		"clients.client_reconnected":        "Befehl für Client-Reconnect an UniFi gesendet.",
+
+		// Certificates
+		"certs.title":               "Zertifikate & Integrierte CA",
+		"certs.subtitle":            "Verwaltung der internen Certificate Authority (RSA 4096) und Ausstellung von 802.1X EAP-TLS Zertifikaten",
+		"certs.ca_active":           "Root CA ist aktiv und einsatzbereit",
+		"certs.ca_not_init":         "Root CA noch nicht initialisiert",
+		"certs.btn_init_ca":         "Root CA generieren (RSA 4096)",
+		"certs.btn_issue":           "+ Neues Client-Zertifikat ausstellen",
+		"certs.issued_certs":        "Ausgestellte Zertifikate",
+		"certs.th_cn":               "Common Name / Inhaber",
+		"certs.th_type":             "Typ",
+		"certs.th_serial":           "Seriennummer",
+		"certs.th_issued":           "Ausgestellt am",
+		"certs.th_expires":          "Gültig bis",
+		"certs.th_status":           "Status",
+		"certs.apple_profile":       "Apple Profil",
+		"certs.confirm_revoke":      "Möchtest du dieses Zertifikat wirklich sperren?",
+		"certs.modal_issue_title":   "Neues Client-Zertifikat ausstellen",
+		"certs.label_cn":            "Common Name / Benutzername",
+		"certs.label_valid_days":    "Gültigkeitsdauer (Tage)",
+		"certs.label_pkcs12_pass":   "Passwort für .P12 Bundle (optional)",
+		"certs.btn_issue_submit":    "Zertifikat erzeugen",
+
+		// Logs
+		"logs.title":             "Live Logs & Audit",
+		"logs.rt_title":          "Echtzeit System- & RADIUS-Logs",
+		"logs.rt_subtitle":       "Streaming der internen Server-Ereignisse über WebSockets",
+		"logs.btn_clear":         "Logs leeren",
+		"logs.btn_scroll_on":     "Auto-Scroll: An",
+		"logs.btn_scroll_off":    "Auto-Scroll: Aus",
+		"logs.hist_title":        "Audit-Historie (SQLite)",
+		"logs.hist_subtitle":     "Dauerhaft gespeicherte Authentifizierungsanfragen (Vorhaltezeit: %d Tage)",
+		"logs.search_ph":         "Filter nach MAC oder User...",
+		"logs.filter_all":        "Alle Ergebnisse",
+		"logs.filter_accept":     "Nur ACCEPT",
+		"logs.filter_reject":     "Nur REJECT",
+		"logs.th_time":           "Zeitstempel",
+		"logs.th_client":         "Client Identifier",
+		"logs.th_details":        "Details & Grund",
+		"logs.th_nas":            "NAS IP & Port",
+		"logs.empty_logs":        "Keine passenden Audit-Logs gefunden.",
+
+		// Settings
+		"settings.title":               "Server-Einstellungen",
+		"settings.unifi_title":         "UniFi Network Integration",
+		"settings.unifi_subtitle":      "Verbindung zur lokalen UniFi Network Application auf der UDM",
+		"settings.btn_test_conn":       "Verbindung testen",
+		"settings.label_url":           "UniFi Controller URL",
+		"settings.url_hint":            "Auf der UDM-Pro / SE in der Regel standardmäßig https://127.0.0.1",
+		"settings.label_auth_mode":     "Authentifizierungsmethode",
+		"settings.auth_apikey":         "UniFi API-Key (Modern, empfohlen ab UniFi OS 3.x)",
+		"settings.auth_credentials":    "Lokaler Benutzer & Passwort (Service-Account)",
+		"settings.label_apikey":        "UniFi API-Key",
+		"settings.apikey_ph":           "API-Key aus UniFi OS Einstellungen -> Integrations",
+		"settings.label_user":          "UniFi Benutzername",
+		"settings.label_pass":          "UniFi Passwort",
+		"settings.pass_ph":             "Neues Passwort eingeben (leer lassen für keine Änderung)",
+		"settings.label_interval":      "Automatisches Sync-Intervall (Minuten)",
+		"settings.interval_hint":       "Gibt an, wie oft VLANs, Switches/APs und Client-Namen im Hintergrund aktualisiert werden.",
+		"settings.mig_title":           "UniFi RADIUS Migration & Übernahme",
+		"settings.mig_subtitle":        "Importiere bestehende MAB- und Benutzerkonten aus dem integrierten UniFi RADIUS Server",
+		"settings.btn_check_status":    "Status prüfen",
+		"settings.mig_checking":        "Prüfe Status des integrierten RADIUS-Servers in UniFi...",
+		"settings.mig_opt_disable":     "Integrierten UniFi FreeRADIUS Server automatisch deaktivieren (gibt UDP-Port 1812 auf der UDM frei)",
+		"settings.mig_opt_profile":     "UniFi RADIUS-Profil (UDM-Internal-RADIUS) automatisch anpassen oder erstellen",
+		"settings.btn_start_mig":       "Migration jetzt ausführen",
+		"settings.radius_title":        "RADIUS Engine & MAB-Richtlinie",
+		"settings.radius_subtitle":     "Netzwerkports, Shared Secret und Verhalten bei unbekannten Geräten",
+		"settings.label_auth_port":     "RADIUS Auth Port (UDP)",
+		"settings.port_hint":           "Standard: 1812 (kann leer gelassen werden, dann gilt 1812. Erfordert Neustart)",
+		"settings.label_secret":        "Globales Shared Secret",
+		"settings.secret_hint":         "Wird für alle UniFi Switches, APs und Gateways verwendet.",
+		"settings.label_unknown_mab":   "Richtlinie für unbekannte MAB-Geräte",
+		"settings.opt_reject_log":      "Ablehnen (REJECT) & im Live-Monitor / Logs aufzeichnen",
+		"settings.opt_allow_default":   "Akzeptieren (ACCEPT) & in Standard-VLAN leiten",
+		"settings.label_default_vlan":  "Standard-VLAN (Default Allow VLAN)",
+		"settings.vlan_hint":           "Dieses VLAN wird zugewiesen, wenn kein explizites VLAN konfiguriert ist.",
+		"settings.sec_title":           "System & Sicherheit",
+		"settings.sec_subtitle":        "Webinterface-Port, Login-Passwort und Log-Aufbewahrung",
+		"settings.label_web_port":      "Webinterface Port",
+		"settings.web_port_hint":       "Standard: 9182 (kann leer gelassen werden, dann wird Default 9182 verwendet. Erfordert Neustart)",
+		"settings.label_admin_pass":    "Admin-Passwort für Webinterface",
+		"settings.admin_pass_ph":       "Neues Passwort vergeben (leer lassen für keine Änderung)",
+		"settings.label_retention":     "Log-Vorhaltezeit (Tage)",
+		"settings.updates_title":       "System & Software-Updates",
+		"settings.updates_subtitle":    "Installierte Version und Update-Prüfung via GitHub Releases",
+		"settings.btn_check_updates":   "Auf Updates prüfen",
+		"settings.installed_version":   "Installierte Version:",
+		"settings.checking_updates":    "Prüfe auf neuere Versionen...",
+		"settings.backup_title":          "Datensicherung & Backup",
+		"settings.backup_subtitle":       "Vollständige Sicherung und Wiederherstellung aller Clients, Einstellungen & Zertifikate (SQLite)",
+		"settings.backup_download_title": "Sofort-Backup herunterladen",
+		"settings.backup_download_desc":  "Erzeugt einen konsistenten SQLite-Snapshot aller Konfigurationen, MAB-Geräte, Benutzer und Zertifikate zur lokalen Sicherung.",
+		"settings.btn_download_backup":   "Backup herunterladen (.db)",
+		"settings.backup_restore_title":  "Backup wiederherstellen",
+		"settings.backup_restore_desc":   "Lädt eine gesicherte Datenbankdatei hoch und stellt den Systemzustand nach automatischer Integritätsprüfung wieder her.",
+		"settings.btn_restore":           "Wiederherstellen",
+		"settings.confirm_restore":       "Achtung: Das Wiederherstellen überschreibt die aktuelle Datenbank. Fortfahren?",
+		"settings.remote_backup_title":          "Remote Backup (WebDAV, S3, SMB/Lokaler Pfad)",
+		"settings.remote_backup_subtitle":       "Automatische Sicherung der SQLite-Datenbank auf Cloud- oder Netzwerkspeicher",
+		"settings.remote_backup_enable":         "Automatisches Remote-Backup aktivieren",
+		"settings.remote_backup_type":           "Backup-Zieltyp",
+		"settings.remote_backup_type_webdav":     "WebDAV (Nextcloud / Synology / Fritz!Box)",
+		"settings.remote_backup_type_s3":         "S3-kompatibel (MinIO / AWS S3 / Cloudflare R2 / Wasabi)",
+		"settings.remote_backup_type_local":      "Lokales / Gemountetes Verzeichnis (SMB / NFS / USB)",
+		"settings.remote_backup_url":            "Server URL / Endpoint",
+		"settings.remote_backup_path":           "Zielpfad / Bucket",
+		"settings.remote_backup_user":           "Benutzername / Access Key",
+		"settings.remote_backup_pass":           "Passwort / Secret Key",
+		"settings.remote_backup_pass_hint":      "Leer lassen, um das bestehende Passwort beizubehalten",
+		"settings.remote_backup_schedule":       "Tägliche Uhrzeit",
+		"settings.remote_backup_retention":      "Aufbewahrung (Anzahl Backups)",
+		"settings.remote_backup_retention_hint": "Ältere Backups auf dem Ziel werden automatisch gelöscht (0 = behalten)",
+		"settings.btn_test_backup":              "Verbindung testen",
+		"settings.btn_run_backup":               "Jetzt sichern",
+		"settings.btn_save_all":        "Einstellungen speichern",
+
+		// Notifications & Bots
+		"settings.notify_title":          "Messenger, Bots & Push-Dienste",
+		"settings.notify_subtitle":       "Automatisierte Alarme & 2-Wege Bots für Telegram, Discord, Pushover und Home Assistant",
+		"settings.notify_events_title":   "Zu überwachende Ereignisse",
+		"settings.event_pending":         "Unbekanntes Gerät erkannt (MAB Pending Queue)",
+		"settings.event_reject":          "Authentifizierung fehlgeschlagen (REJECT)",
+		"settings.event_reconnect":       "Port-Power-Cycle oder Reconnect ausgeführt",
+		"settings.event_ca_expiry":       "CA Client-Zertifikat läuft in Kürze ab (< 14 Tage)",
+		"settings.event_daily":           "Täglicher Statusbericht",
+		"settings.label_daily_time":      "Uhrzeit für täglichen Bericht",
+		"settings.btn_send_test":         "Test-Nachricht senden",
+		"settings.tg_title":              "Telegram Bot (2-Wege Interaktiv)",
+		"settings.tg_desc":               "Ermöglicht 1-Klick Freigabe, VLAN-Auswahl und Sperren direkt per Telegram Chat über Inline-Buttons.",
+		"settings.label_tg_enable":       "Telegram Bot aktivieren",
+		"settings.label_tg_token":        "Bot Token (von @BotFather)",
+		"settings.label_tg_chats":        "Autorisierte Chat-IDs (Whitelist, z. B. 123456789, 987654321)",
+		"settings.dc_title":              "Discord Bot (2-Wege Interaktiv)",
+		"settings.dc_desc":               "Sendet strukturierte Embeds mit Aktions-Buttons in einen Discord-Kanal.",
+		"settings.label_dc_enable":       "Discord Bot aktivieren",
+		"settings.label_dc_token":        "Bot Token (aus Discord Developer Portal)",
+		"settings.label_dc_channel":      "Ziel-Kanal ID (Channel ID)",
+		"settings.po_title":              "Pushover (1-Weg Priority Push)",
+		"settings.po_desc":               "Sendet Direktalarme auf Smartphone und Desktop mit Link ins RADIUS Web-UI.",
+		"settings.label_po_enable":       "Pushover aktivieren",
+		"settings.label_po_token":        "Application API Token",
+		"settings.label_po_user":         "User Key",
+		"settings.ha_title":              "Home Assistant (1-Weg Webhook)",
+		"settings.ha_desc":               "Sendet strukturierte JSON-Events an einen Home Assistant Webhook für Smarthome-Automationen.",
+		"settings.label_ha_enable":       "Home Assistant Webhook aktivieren",
+		"settings.label_ha_url":          "Webhook URL (z. B. http://homeassistant.local:8123/api/webhook/...)",
+	},
+	LangEN: {
+		// Common
+		"common.online":          "Online (WebSocket)",
+		"common.logout":          "Log Out",
+		"common.save":            "Save",
+		"common.cancel":          "Cancel",
+		"common.delete":          "Delete",
+		"common.edit":            "Edit",
+		"common.approve":         "Approve",
+		"common.filter":          "Filter",
+		"common.all":             "All",
+		"common.unknown":         "Unknown",
+		"common.latency":         "Latency",
+		"common.status":          "Status",
+		"common.actions":         "Actions",
+		"common.never":           "Never",
+		"common.active":          "Active",
+		"common.pending":         "Pending",
+		"common.disabled":        "Disabled",
+		"common.valid":           "Valid",
+		"common.revoked":         "Revoked",
+		"common.generate":        "Generate",
+		"common.copy":            "Copy",
+		"common.copied":          "Copied!",
+		"common.unifi_sync":      "UniFi Sync",
+		"common.syncing":         "Syncing...",
+		"common.sync_done":       "Synced!",
+		"common.sync_tooltip":    "Sync VLANs, switches & devices now",
+
+		// Nav
+		"nav.dashboard":    "Live Monitor",
+		"nav.clients":      "Clients",
+		"nav.certificates": "Certificates (CA)",
+		"nav.logs":         "Live Logs & Audit",
+		"nav.settings":     "Settings",
+
+		// Login
+		"login.title":         "UniFi RADIUS",
+		"login.subtitle":      "UDM-Pro & UDM-SE",
+		"login.password":      "Admin Password",
+		"login.new_password":  "Set New Admin Password",
+		"login.btn_login":     "Sign In",
+		"login.btn_setup":     "Save Password & Sign In",
+		"login.setup_notice":  "Initial Setup: Please create a secure admin password for access to this server.",
+		"login.error_invalid": "Invalid admin password.",
+		"login.error_minlen":  "Password must be at least 4 characters long.",
+		"login.error_rate_limit": "Too many failed attempts. Please wait 2 minutes before trying again.",
+		"login.footer_info":   "UniFi RADIUS Server v%s • Port %d",
+
+		// Dashboard
+		"dash.title":            "RADIUS Live Monitor",
+		"dash.total_clients":    "Registered Devices",
+		"dash.active_clients":   "Active (Approved)",
+		"dash.pending_clients":  "Pending (Discovered)",
+		"dash.unifi_vlans":      "UniFi VLANs",
+		"dash.feed_title":       "Real-Time RADIUS Activity Monitor",
+		"dash.feed_subtitle":    "Live incoming MAB and 802.1X authentication requests (WebSockets)",
+		"dash.feed_streaming":   "Live Streaming",
+		"dash.th_time":          "Timestamp",
+		"dash.th_result":        "Result",
+		"dash.th_client":        "Client MAC / Identity",
+		"dash.th_vlan":          "VLAN",
+		"dash.th_device":        "UniFi Device / Vendor",
+		"dash.th_switch":        "Switch & Port",
+		"dash.th_latency":       "Latency",
+		"dash.waiting_requests": "Waiting for incoming RADIUS authentication requests...",
+
+		// Clients
+		"clients.title":            "MAB Devices & Users",
+		"clients.subtitle":         "Authorized MAC addresses (MAB) and 802.1X users with dynamic VLAN assignment",
+		"clients.btn_add":          "+ Add New Device",
+		"clients.tab_mab":          "Device (MAB)",
+		"clients.tab_user":         "User (802.1X / PAP)",
+		"clients.label_username":   "Username",
+		"clients.username_hint":    "e.g., first.last or employee1",
+		"clients.label_password":   "Password",
+		"clients.password_ph":      "Enter secure password",
+		"clients.password_edit_hint": "Leave empty to keep existing password",
+		"clients.filter_type_all":  "All Types",
+		"clients.filter_type_mab":  "Only Devices (MAB)",
+		"clients.filter_type_user": "Only Users (Accounts)",
+		"clients.search_ph":        "Search by MAC, name, VLAN...",
+		"clients.filter_all":       "All Statuses",
+		"clients.filter_active":    "Active Only",
+		"clients.filter_pending":   "Pending Only",
+		"clients.filter_disabled":  "Disabled Only",
+		"clients.filter_all_vlans": "All VLANs",
+		"clients.clear_filter":     "Clear filter",
+		"clients.th_mac":           "MAC Address / Identity",
+		"clients.th_vlan":          "VLAN Assignment",
+		"clients.th_desc":          "Description / Owner",
+		"clients.th_unifi_info":    "UniFi Info & Switch Port",
+		"clients.th_last_seen":     "Last Seen",
+		"clients.no_unifi_info":    "No UniFi info",
+		"clients.empty_list":       "No devices or clients found.",
+		"clients.modal_add_title":  "Add New Client",
+		"clients.modal_edit_title": "Edit Client",
+		"clients.label_mac":        "MAC Address",
+		"clients.mac_hint":         "Supports formats like AA:BB:CC:DD:EE:FF, aabbccddeeff",
+		"clients.label_vlan":       "VLAN Assignment",
+		"clients.vlan_default":     "Use Default VLAN",
+		"clients.label_desc":       "Description / Note (optional)",
+		"clients.desc_ph":          "e.g., Living Room TV, Office Printer",
+		"clients.label_status":     "Status",
+		"clients.confirm_delete":   "Do you really want to delete this device?",
+		"clients.btn_restart_port":         "Restart Port",
+		"clients.btn_restart_port_tooltip": "Restart switch port via UniFi (Power-Cycle & Reconnect)",
+		"clients.btn_port":                 "Port",
+		"clients.btn_reconnect":             "Reconnect",
+		"clients.btn_reconnect_short":       "Reconnect",
+		"clients.btn_reconnect_tooltip":     "Disconnect and reconnect client via UniFi (Kick)",
+		"clients.reconnect_on_save":         "Trigger reconnect / port power-cycle immediately after saving",
+		"clients.reconnect_hint":            "Briefly disconnects device so new VLAN assignment is immediately applied via DHCP.",
+		"clients.port_restarted":            "Port power-cycle & reconnect command sent to UniFi.",
+		"clients.client_reconnected":        "Client reconnect command sent to UniFi.",
+
+		// Certificates
+		"certs.title":               "Certificates & Internal CA",
+		"certs.subtitle":            "Internal Certificate Authority (RSA 4096) management and 802.1X EAP-TLS certificate issuance",
+		"certs.ca_active":           "Root CA is active and ready",
+		"certs.ca_not_init":         "Root CA is not initialized yet",
+		"certs.btn_init_ca":         "Generate Root CA (RSA 4096)",
+		"certs.btn_issue":           "+ Issue New Client Certificate",
+		"certs.issued_certs":        "Issued Certificates",
+		"certs.th_cn":               "Common Name / Identity",
+		"certs.th_type":             "Type",
+		"certs.th_serial":           "Serial Number",
+		"certs.th_issued":           "Issued On",
+		"certs.th_expires":          "Expires On",
+		"certs.th_status":           "Status",
+		"certs.apple_profile":       "Apple Profile",
+		"certs.confirm_revoke":      "Do you really want to revoke this certificate?",
+		"certs.modal_issue_title":   "Issue New Client Certificate",
+		"certs.label_cn":            "Common Name / Username",
+		"certs.label_valid_days":    "Validity (Days)",
+		"certs.label_pkcs12_pass":   "Password for .P12 Bundle (optional)",
+		"certs.btn_issue_submit":    "Generate Certificate",
+
+		// Logs
+		"logs.title":             "Live Logs & Audit",
+		"logs.rt_title":          "Real-Time System & RADIUS Logs",
+		"logs.rt_subtitle":       "Streaming internal server events via WebSockets",
+		"logs.btn_clear":         "Clear Logs",
+		"logs.btn_scroll_on":     "Auto-Scroll: On",
+		"logs.btn_scroll_off":    "Auto-Scroll: Off",
+		"logs.hist_title":        "Audit History (SQLite)",
+		"logs.hist_subtitle":     "Permanently stored authentication requests (Retention: %d days)",
+		"logs.search_ph":         "Filter by MAC or user...",
+		"logs.filter_all":        "All Results",
+		"logs.filter_accept":     "ACCEPT Only",
+		"logs.filter_reject":     "REJECT Only",
+		"logs.th_time":           "Timestamp",
+		"logs.th_client":         "Client Identifier",
+		"logs.th_details":        "Details & Reason",
+		"logs.th_nas":            "NAS IP & Port",
+		"logs.empty_logs":        "No matching audit logs found.",
+
+		// Settings
+		"settings.title":               "Server Settings",
+		"settings.unifi_title":         "UniFi Network Integration",
+		"settings.unifi_subtitle":      "Connection to the local UniFi Network Application on the UDM",
+		"settings.btn_test_conn":       "Test Connection",
+		"settings.label_url":           "UniFi Controller URL",
+		"settings.url_hint":            "Typically https://127.0.0.1 by default on UDM-Pro / SE",
+		"settings.label_auth_mode":     "Authentication Method",
+		"settings.auth_apikey":         "UniFi API-Key (Modern, recommended for UniFi OS 3.x+)",
+		"settings.auth_credentials":    "Local Username & Password (Service Account)",
+		"settings.label_apikey":        "UniFi API-Key",
+		"settings.apikey_ph":           "API Key from UniFi OS Settings -> Integrations",
+		"settings.label_user":          "UniFi Username",
+		"settings.label_pass":          "UniFi Password",
+		"settings.pass_ph":             "Enter new password (leave blank for no change)",
+		"settings.label_interval":      "Auto-Sync Interval (minutes)",
+		"settings.interval_hint":       "Specifies how often VLANs, switches/APs, and client names are updated in background.",
+		"settings.mig_title":           "UniFi RADIUS Migration & Takeover",
+		"settings.mig_subtitle":        "Import existing MAB and user credentials from built-in UniFi RADIUS server",
+		"settings.btn_check_status":    "Check Status",
+		"settings.mig_checking":        "Checking built-in UniFi RADIUS server status...",
+		"settings.mig_opt_disable":     "Automatically disable built-in UniFi FreeRADIUS (frees UDP port 1812 on UDM)",
+		"settings.mig_opt_profile":     "Automatically configure or create UniFi RADIUS profile (UDM-Internal-RADIUS)",
+		"settings.btn_start_mig":       "Execute Migration Now",
+		"settings.radius_title":        "RADIUS Engine & MAB Policy",
+		"settings.radius_subtitle":     "Network ports, shared secret, and behavior for unknown devices",
+		"settings.label_auth_port":     "RADIUS Auth Port (UDP)",
+		"settings.port_hint":           "Default: 1812 (leave blank to use default 1812. Requires restart)",
+		"settings.label_secret":        "Global Shared Secret",
+		"settings.secret_hint":         "Used for all UniFi switches, APs, and gateways.",
+		"settings.label_unknown_mab":   "Policy for Unknown MAB Devices",
+		"settings.opt_reject_log":      "Reject (REJECT) & record in live monitor / logs",
+		"settings.opt_allow_default":   "Accept (ACCEPT) & assign to default VLAN",
+		"settings.label_default_vlan":  "Default VLAN (Default Allow VLAN)",
+		"settings.vlan_hint":           "This VLAN is assigned if no explicit VLAN is configured.",
+		"settings.sec_title":           "System & Security",
+		"settings.sec_subtitle":        "Web interface port, login password, and log retention",
+		"settings.label_web_port":      "Web Interface Port",
+		"settings.web_port_hint":       "Default: 9182 (leave blank to use default 9182. Requires restart)",
+		"settings.label_admin_pass":    "Admin Password for Web Interface",
+		"settings.admin_pass_ph":       "Set new password (leave blank for no change)",
+		"settings.label_retention":     "Log Retention (Days)",
+		"settings.updates_title":       "System & Software Updates",
+		"settings.updates_subtitle":    "Installed version and update check via GitHub Releases",
+		"settings.btn_check_updates":   "Check for Updates",
+		"settings.installed_version":   "Installed Version:",
+		"settings.checking_updates":    "Checking for newer versions...",
+		"settings.backup_title":          "Data Backup & Restore",
+		"settings.backup_subtitle":       "Full backup and restore of all clients, settings & certificates (SQLite)",
+		"settings.backup_download_title": "Download Instant Backup",
+		"settings.backup_download_desc":  "Creates a consistent SQLite snapshot of all configurations, MAB devices, users, and certificates for local backup.",
+		"settings.btn_download_backup":   "Download Backup (.db)",
+		"settings.backup_restore_title":  "Restore Backup",
+		"settings.backup_restore_desc":   "Uploads a backed-up database file and restores system state after automatic integrity verification.",
+		"settings.btn_restore":           "Restore",
+		"settings.confirm_restore":       "Warning: Restoring will overwrite the current database. Proceed?",
+		"settings.remote_backup_title":          "Remote Backup (WebDAV, S3, SMB/Local Path)",
+		"settings.remote_backup_subtitle":       "Automated backup of SQLite database to cloud or network storage",
+		"settings.remote_backup_enable":         "Enable automated remote backup",
+		"settings.remote_backup_type":           "Backup Target Type",
+		"settings.remote_backup_type_webdav":     "WebDAV (Nextcloud / Synology / Fritz!Box)",
+		"settings.remote_backup_type_s3":         "S3-compatible (MinIO / AWS S3 / Cloudflare R2 / Wasabi)",
+		"settings.remote_backup_type_local":      "Local / Mounted Directory (SMB / NFS / USB)",
+		"settings.remote_backup_url":            "Server URL / Endpoint",
+		"settings.remote_backup_path":           "Target Path / Bucket",
+		"settings.remote_backup_user":           "Username / Access Key",
+		"settings.remote_backup_pass":           "Password / Secret Key",
+		"settings.remote_backup_pass_hint":      "Leave empty to keep existing password / key",
+		"settings.remote_backup_schedule":       "Daily Schedule Time",
+		"settings.remote_backup_retention":      "Retention (Backup Count)",
+		"settings.remote_backup_retention_hint": "Older backups on the target will be pruned (0 = keep all)",
+		"settings.btn_test_backup":              "Test Connection",
+		"settings.btn_run_backup":               "Backup Now",
+		"settings.btn_save_all":        "Save Settings",
+
+		// Notifications & Bots
+		"settings.notify_title":          "Messengers, Bots & Push Notifications",
+		"settings.notify_subtitle":       "Automated alerts & 2-way bots for Telegram, Discord, Pushover and Home Assistant",
+		"settings.notify_events_title":   "Events to Notify",
+		"settings.event_pending":         "New unknown device detected (MAB Pending Queue)",
+		"settings.event_reject":          "Authentication failed (REJECT)",
+		"settings.event_reconnect":       "Port power-cycle or reconnect executed",
+		"settings.event_ca_expiry":       "CA client certificate expiring soon (< 14 days)",
+		"settings.event_daily":           "Daily status summary",
+		"settings.label_daily_time":      "Daily summary time",
+		"settings.btn_send_test":         "Send Test Alert",
+		"settings.tg_title":              "Telegram Bot (2-Way Interactive)",
+		"settings.tg_desc":               "Enables 1-click approvals, VLAN selection, and blocking directly inside Telegram using inline buttons.",
+		"settings.label_tg_enable":       "Enable Telegram Bot",
+		"settings.label_tg_token":        "Bot Token (from @BotFather)",
+		"settings.label_tg_chats":        "Authorized Chat IDs (Whitelist, e.g. 123456789, 987654321)",
+		"settings.dc_title":              "Discord Bot (2-Way Interactive)",
+		"settings.dc_desc":               "Delivers rich embeds with action buttons to a designated Discord channel.",
+		"settings.label_dc_enable":       "Enable Discord Bot",
+		"settings.label_dc_token":        "Bot Token (from Discord Developer Portal)",
+		"settings.label_dc_channel":      "Target Channel ID",
+		"settings.po_title":              "Pushover (1-Way Priority Push)",
+		"settings.po_desc":               "Sends high-priority alerts to mobile and desktop with a direct link to the web UI.",
+		"settings.label_po_enable":       "Enable Pushover",
+		"settings.label_po_token":        "Application API Token",
+		"settings.label_po_user":         "User Key",
+		"settings.ha_title":              "Home Assistant (1-Way Webhook)",
+		"settings.ha_desc":               "Dispatches structured JSON events to a Home Assistant webhook for smart home automations.",
+		"settings.label_ha_enable":       "Enable Home Assistant Webhook",
+		"settings.label_ha_url":          "Webhook URL (e.g. http://homeassistant.local:8123/api/webhook/...)",
+	},
+}
+
+// DetectLanguage resolves the user's preferred language:
+// 1. Explicit query param ?lang=de or ?lang=en
+// 2. Cookie "lang"
+// 3. Header "Accept-Language" (en -> English, de -> German)
+// Defaults to "de" if no browser header or ambiguous.
+func DetectLanguage(r *http.Request) string {
+	if q := strings.ToLower(r.URL.Query().Get("lang")); q == LangDE || q == LangEN {
+		return q
+	}
+
+	if c, err := r.Cookie("lang"); err == nil {
+		val := strings.ToLower(c.Value)
+		if val == LangDE || val == LangEN {
+			return val
+		}
+	}
+
+	accept := strings.ToLower(r.Header.Get("Accept-Language"))
+	if accept != "" {
+		if strings.HasPrefix(accept, "en") {
+			return LangEN
+		}
+		if strings.Contains(accept, "de") {
+			return LangDE
+		}
+		if strings.Contains(accept, "en") {
+			return LangEN
+		}
+	}
+
+	return LangDE
+}
+
+// T translates a key into the given language.
+func T(lang, key string, args ...any) string {
+	if lang != LangDE && lang != LangEN {
+		lang = LangEN
+	}
+
+	dict, ok := translations[lang]
+	if !ok {
+		dict = translations[LangEN]
+	}
+
+	val, found := dict[key]
+	if !found {
+		// Fallback to German or English if missing
+		if lang != LangDE {
+			if deVal, deFound := translations[LangDE][key]; deFound {
+				val = deVal
+				found = true
+			}
+		} else {
+			if enVal, enFound := translations[LangEN][key]; enFound {
+				val = enVal
+				found = true
+			}
+		}
+	}
+
+	if !found {
+		return key
+	}
+
+	if len(args) > 0 {
+		return fmt.Sprintf(val, args...)
+	}
+	return val
+}

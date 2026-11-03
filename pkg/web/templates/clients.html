@@ -1,0 +1,408 @@
+{{define "content"}}
+<div class="panel">
+  <div class="panel-header">
+    <div>
+      <h3 class="panel-title">{{tr .Lang "clients.title"}}</h3>
+      <p class="panel-subtitle">{{tr .Lang "clients.subtitle"}}</p>
+    </div>
+    <div style="display: flex; gap: 10px; align-items: center;">
+      <form method="GET" action="/clients" 
+            hx-get="/clients" 
+            hx-trigger="input changed delay:250ms from:input[name='q'], change from:select" 
+            hx-target="#clients-table-container" 
+            hx-select="#clients-table-container" 
+            hx-push-url="true" 
+            style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <input type="text" name="q" value="{{.SearchQuery}}" placeholder="{{tr .Lang "clients.search_ph"}}" class="form-control" style="width: 180px; padding: 6px 12px; font-size: 12px;">
+        <select name="type" class="form-control" style="width: 130px; padding: 6px 10px; font-size: 12px;">
+          <option value="" {{if eq .SelectedType ""}}selected{{end}}>{{tr .Lang "clients.filter_type_all"}}</option>
+          <option value="mab" {{if eq .SelectedType "mab"}}selected{{end}}>{{tr .Lang "clients.filter_type_mab"}}</option>
+          <option value="user" {{if eq .SelectedType "user"}}selected{{end}}>{{tr .Lang "clients.filter_type_user"}}</option>
+        </select>
+        <select name="status" class="form-control" style="width: 120px; padding: 6px 10px; font-size: 12px;">
+          <option value="" {{if eq .SelectedStatus ""}}selected{{end}}>{{tr .Lang "clients.filter_all"}}</option>
+          <option value="active" {{if eq .SelectedStatus "active"}}selected{{end}}>{{tr .Lang "clients.filter_active"}}</option>
+          <option value="pending" {{if eq .SelectedStatus "pending"}}selected{{end}}>{{tr .Lang "clients.filter_pending"}}</option>
+          <option value="disabled" {{if eq .SelectedStatus "disabled"}}selected{{end}}>{{tr .Lang "clients.filter_disabled"}}</option>
+        </select>
+        <select name="vlan" class="form-control" style="width: 160px; padding: 6px 10px; font-size: 12px;">
+          <option value="" {{if eq .SelectedVLAN ""}}selected{{end}}>{{tr .Lang "clients.filter_all_vlans"}}</option>
+          <option value="default" {{if eq .SelectedVLAN "default"}}selected{{end}}>Default (VLAN {{.DefaultVLAN}}{{if .DefaultVLANName}} - {{.DefaultVLANName}}{{end}})</option>
+          {{range .VLANs}}
+            <option value="{{.VLANID}}" {{if eq $.SelectedVLAN (printf "%d" .VLANID)}}selected{{end}}>VLAN {{.VLANID}} - {{.Name}}</option>
+          {{end}}
+        </select>
+        {{if or .SearchQuery .SelectedStatus .SelectedVLAN .SelectedType}}
+          <a href="/clients" class="btn btn-secondary btn-sm" title="{{tr .Lang "clients.clear_filter"}}" style="text-decoration: none; padding: 6px 10px; display: inline-flex; align-items: center; justify-content: center; font-weight: bold;">&times;</a>
+        {{end}}
+        <button type="submit" class="btn btn-secondary btn-sm">{{tr .Lang "common.filter"}}</button>
+      </form>
+      <button class="btn btn-primary btn-sm" onclick="openAddModal()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        {{tr .Lang "clients.btn_add"}}
+      </button>
+    </div>
+  </div>
+
+  <div id="clients-table-container">
+    <div class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>{{tr .Lang "clients.th_mac"}}</th>
+            <th>{{tr .Lang "common.status"}}</th>
+            <th>{{tr .Lang "clients.th_vlan"}}</th>
+            <th>{{tr .Lang "clients.th_desc"}}</th>
+            <th>{{tr .Lang "clients.th_unifi_info"}}</th>
+            <th>{{tr .Lang "clients.th_last_seen"}}</th>
+            <th style="text-align: right;">{{tr .Lang "common.actions"}}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Clients}}
+          <tr>
+            <td>
+              {{if .MACAddress}}
+                <span class="code-pill">{{.MACAddress}}</span>
+                <span class="badge dim" style="margin-left: 4px;">MAB</span>
+              {{else if .Username}}
+                <span class="code-pill">👤 {{.Username}}</span>
+                {{if eq .AuthType "eap-tls"}}
+                  <span class="badge dim" style="margin-left: 4px;">TLS</span>
+                {{else}}
+                  <span class="badge dim" style="margin-left: 4px; background: rgba(59, 130, 246, 0.2); color: #60a5fa;">USER</span>
+                {{end}}
+              {{else}}
+                <span class="code-pill">-</span>
+              {{end}}
+            </td>
+            <td>
+              {{if eq .Status "active"}}
+                <span class="badge active">{{tr $.Lang "common.active"}}</span>
+              {{else if eq .Status "pending"}}
+                <span class="badge pending">{{tr $.Lang "common.pending"}}</span>
+              {{else}}
+                <span class="badge disabled">{{tr $.Lang "common.disabled"}}</span>
+              {{end}}
+            </td>
+            <td>
+              {{if .VLANID}}
+                <span class="badge vlan">VLAN {{.VLANID}}</span>
+                {{if .VLANName}}<span style="font-weight: 500; font-size: 12px; margin-left: 6px; color: var(--text-main);">{{.VLANName}}</span>{{end}}
+              {{else}}
+                <span class="badge dim" title="Default VLAN">Default (VLAN {{$.DefaultVLAN}}{{if $.DefaultVLANName}} - {{$.DefaultVLANName}}{{end}})</span>
+              {{end}}
+            </td>
+            <td style="color: var(--text-muted); font-size: 13px;">
+              {{if .Description}}{{.Description}}{{else}}<span style="color: var(--text-dim);">-</span>{{end}}
+            </td>
+            <td>
+              {{if or .UniFiName .UniFiHostname .UniFiVendor}}
+                <div><strong>{{if .UniFiName}}{{.UniFiName}}{{else}}{{.UniFiHostname}}{{end}}</strong></div>
+                <div style="font-size: 11px; color: var(--text-dim);">
+                  {{if .UniFiVendor}}{{.UniFiVendor}}{{end}}
+                  {{if .UniFiSwitchPort}} • Port {{.UniFiSwitchPort}}{{end}}
+                </div>
+              {{else}}
+                <span style="color: var(--text-dim); font-size: 12px;">{{tr $.Lang "clients.no_unifi_info"}}</span>
+              {{end}}
+            </td>
+            <td style="color: var(--text-dim); font-size: 12px;">
+              {{if .LastSeenAt}}
+                <time class="local-time" datetime="{{.LastSeenAt.Format "2006-01-02T15:04:05Z07:00"}}" data-format="datetime">{{.LastSeenAt.Format "02.01. 15:04"}}</time>
+              {{else}}
+                {{tr $.Lang "common.never"}}
+              {{end}}
+            </td>
+            <td style="text-align: right;">
+              <div style="display: inline-flex; gap: 6px; align-items: center;">
+                {{if .MACAddress}}
+                  {{if or .UniFiIsWired .UniFiSwitchPort}}
+                    <button type="button" class="btn btn-secondary btn-sm" title="{{tr $.Lang "clients.btn_restart_port_tooltip"}}"
+                            hx-post="/clients/restart-port?id={{.ID}}"
+                            hx-swap="none"
+                            onclick="showToast('{{tr $.Lang "clients.port_restarted"}}')">
+                      ⚡ {{tr $.Lang "clients.btn_port"}}
+                    </button>
+                  {{else}}
+                    <button type="button" class="btn btn-secondary btn-sm" title="{{tr $.Lang "clients.btn_reconnect_tooltip"}}"
+                            hx-post="/clients/reconnect?id={{.ID}}"
+                            hx-swap="none"
+                            onclick="showToast('{{tr $.Lang "clients.client_reconnected"}}')">
+                      🔄 {{tr $.Lang "clients.btn_reconnect_short"}}
+                    </button>
+                  {{end}}
+                {{end}}
+                {{if eq .Status "pending"}}
+                  <form method="POST" action="/clients/approve" style="display:inline;">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <button type="submit" class="btn btn-primary btn-sm" title="{{tr $.Lang "common.approve"}}">{{tr $.Lang "common.approve"}}</button>
+                  </form>
+                {{end}}
+                <button class="btn btn-secondary btn-sm" onclick="openEditModal({{.ID}}, '{{.MACAddress}}', '{{.Username}}', '{{.AuthType}}', '{{if .VLANID}}{{.VLANID}}{{end}}', '{{.Status}}', '{{.Description}}', {{.UniFiIsWired}}, '{{.UniFiSwitchName}}', '{{.UniFiSwitchPort}}')">{{tr $.Lang "common.edit"}}</button>
+                <form method="POST" action="/clients/delete" style="display:inline;" onsubmit="return confirm('{{tr $.Lang "clients.confirm_delete"}}');">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  <button type="submit" class="btn btn-danger btn-sm">{{tr $.Lang "common.delete"}}</button>
+                </form>
+              </div>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 40px;">
+              {{tr .Lang "clients.empty_list"}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Add Device / User -->
+<div id="addModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h4 class="panel-title">{{tr .Lang "clients.modal_add_title"}}</h4>
+      <button class="btn btn-secondary btn-sm" onclick="closeAddModal()">&times;</button>
+    </div>
+    <form method="POST" action="/clients/create">
+      <div class="modal-body">
+        <div style="display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 1px solid var(--border-color, #333); padding-bottom: 12px;">
+          <button type="button" id="tab-add-mab" class="btn btn-primary btn-sm" onclick="switchAddTab('mab')">💻 {{tr .Lang "clients.tab_mab"}}</button>
+          <button type="button" id="tab-add-user" class="btn btn-secondary btn-sm" onclick="switchAddTab('user')">👤 {{tr .Lang "clients.tab_user"}}</button>
+        </div>
+        <input type="hidden" name="entry_type" id="add-entry-type" value="mab">
+
+        <div id="add-group-mac" class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_mac"}}</label>
+          <input type="text" name="mac_address" id="add-input-mac" required placeholder="z.B. AA:BB:CC:DD:EE:FF" class="form-control" autocomplete="off">
+          <div class="form-text">{{tr .Lang "clients.mac_hint"}}</div>
+        </div>
+
+        <div id="add-group-user" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "clients.label_username"}}</label>
+            <input type="text" name="username" id="add-input-user" placeholder="z. B. max.mustermann" class="form-control" autocomplete="off">
+            <div class="form-text">{{tr .Lang "clients.username_hint"}}</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "clients.label_password"}}</label>
+            <input type="password" name="password" id="add-input-pass" placeholder="{{tr .Lang "clients.password_ph"}}" class="form-control" autocomplete="new-password">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_vlan"}}</label>
+          <select name="vlan_id" class="form-control">
+            <option value="">{{tr .Lang "clients.vlan_default"}} (VLAN {{.DefaultVLAN}}{{if .DefaultVLANName}} - {{.DefaultVLANName}}{{end}})</option>
+            {{range .VLANs}}
+              <option value="{{.VLANID}}">VLAN {{.VLANID}} - {{.Name}} {{if .Subnet}}({{.Subnet}}){{end}}</option>
+            {{end}}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_status"}}</label>
+          <select name="status" class="form-control">
+            <option value="active">{{tr .Lang "common.active"}}</option>
+            <option value="disabled">{{tr .Lang "common.disabled"}}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_desc"}}</label>
+          <input type="text" name="description" placeholder="{{tr .Lang "clients.desc_ph"}}" class="form-control">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" onclick="closeAddModal()">{{tr .Lang "common.cancel"}}</button>
+        <button type="submit" class="btn btn-primary">{{tr .Lang "common.save"}}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: Edit Device / User -->
+<div id="editModal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h4 class="panel-title">{{tr .Lang "clients.modal_edit_title"}}</h4>
+      <button class="btn btn-secondary btn-sm" onclick="closeEditModal()">&times;</button>
+    </div>
+    <form method="POST" action="/clients/update">
+      <input type="hidden" name="id" id="edit-id">
+      <input type="hidden" name="entry_type" id="edit-entry-type" value="mab">
+      <div class="modal-body">
+        <div id="edit-group-mac" class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_mac"}}</label>
+          <input type="text" name="mac_address" id="edit-mac" class="form-control">
+        </div>
+
+        <div id="edit-group-user" style="display: none;">
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "clients.label_username"}}</label>
+            <input type="text" name="username" id="edit-username" class="form-control" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "clients.label_password"}}</label>
+            <input type="password" name="password" id="edit-password" placeholder="{{tr .Lang "clients.password_ph"}}" class="form-control" autocomplete="new-password">
+            <div class="form-text" style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">{{tr .Lang "clients.password_edit_hint"}}</div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_vlan"}}</label>
+          <select name="vlan_id" id="edit-vlan" class="form-control">
+            <option value="">{{tr .Lang "clients.vlan_default"}} (VLAN {{.DefaultVLAN}}{{if .DefaultVLANName}} - {{.DefaultVLANName}}{{end}})</option>
+            {{range .VLANs}}
+              <option value="{{.VLANID}}">VLAN {{.VLANID}} - {{.Name}}</option>
+            {{end}}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_status"}}</label>
+          <select name="status" id="edit-status" class="form-control">
+            <option value="active">{{tr .Lang "common.active"}}</option>
+            <option value="pending">{{tr .Lang "common.pending"}}</option>
+            <option value="disabled">{{tr .Lang "common.disabled"}}</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "clients.label_desc"}}</label>
+          <input type="text" name="description" id="edit-desc" class="form-control">
+        </div>
+
+        <div id="edit-reconnect-box" class="form-group" style="margin-top: 15px; padding: 10px 12px; background: rgba(255,255,255,0.03); border-radius: 6px; border: 1px solid var(--border-color, #333);">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 500; margin: 0;">
+            <input type="checkbox" name="reconnect" value="1" checked style="accent-color: var(--accent-blue);">
+            <span>{{tr .Lang "clients.reconnect_on_save"}}</span>
+          </label>
+          <div class="form-text" style="margin-top: 4px; font-size: 11px; color: var(--text-dim);">
+            {{tr .Lang "clients.reconnect_hint"}}
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; gap: 8px;">
+          <button type="button" id="modal-port-btn" class="btn btn-secondary btn-sm" onclick="triggerModalPortRestart()" style="display: none;">
+            ⚡ {{tr .Lang "clients.btn_restart_port"}}
+          </button>
+          <button type="button" id="modal-reconnect-btn" class="btn btn-secondary btn-sm" onclick="triggerModalReconnect()">
+            🔄 {{tr .Lang "clients.btn_reconnect"}}
+          </button>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button type="button" class="btn btn-secondary" onclick="closeEditModal()">{{tr .Lang "common.cancel"}}</button>
+          <button type="submit" class="btn btn-primary">{{tr .Lang "common.save"}}</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openAddModal() {
+  switchAddTab('mab');
+  document.getElementById('addModal').classList.add('open');
+}
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('open');
+}
+function switchAddTab(type) {
+  document.getElementById('add-entry-type').value = type;
+  const tabMab = document.getElementById('tab-add-mab');
+  const tabUser = document.getElementById('tab-add-user');
+  const groupMac = document.getElementById('add-group-mac');
+  const groupUser = document.getElementById('add-group-user');
+  const inputMac = document.getElementById('add-input-mac');
+  const inputUser = document.getElementById('add-input-user');
+  const inputPass = document.getElementById('add-input-pass');
+
+  if (type === 'user') {
+    tabUser.className = 'btn btn-primary btn-sm';
+    tabMab.className = 'btn btn-secondary btn-sm';
+    groupMac.style.display = 'none';
+    groupUser.style.display = 'block';
+    inputMac.removeAttribute('required');
+    inputUser.setAttribute('required', 'required');
+    inputPass.setAttribute('required', 'required');
+  } else {
+    tabMab.className = 'btn btn-primary btn-sm';
+    tabUser.className = 'btn btn-secondary btn-sm';
+    groupMac.style.display = 'block';
+    groupUser.style.display = 'none';
+    inputMac.setAttribute('required', 'required');
+    inputUser.removeAttribute('required');
+    inputPass.removeAttribute('required');
+  }
+}
+
+function openEditModal(id, mac, username, authType, vlan, status, desc, isWired, swName, swPort) {
+  document.getElementById('edit-id').value = id;
+  document.getElementById('edit-vlan').value = vlan;
+  document.getElementById('edit-status').value = status;
+  document.getElementById('edit-desc').value = desc;
+
+  const isUser = (username && username !== '') || authType === 'pap';
+  const groupMac = document.getElementById('edit-group-mac');
+  const groupUser = document.getElementById('edit-group-user');
+  const reconnectBox = document.getElementById('edit-reconnect-box');
+  const portBtn = document.getElementById('modal-port-btn');
+  const recBtn = document.getElementById('modal-reconnect-btn');
+
+  if (isUser) {
+    document.getElementById('edit-entry-type').value = 'user';
+    document.getElementById('edit-username').value = username;
+    document.getElementById('edit-password').value = '';
+    groupMac.style.display = 'none';
+    groupUser.style.display = 'block';
+    if (reconnectBox) reconnectBox.style.display = 'none';
+    if (portBtn) portBtn.style.display = 'none';
+    if (recBtn) recBtn.style.display = 'none';
+  } else {
+    document.getElementById('edit-entry-type').value = 'mab';
+    document.getElementById('edit-mac').value = mac;
+    groupMac.style.display = 'block';
+    groupUser.style.display = 'none';
+    if (reconnectBox) reconnectBox.style.display = 'block';
+    if (recBtn) recBtn.style.display = 'inline-flex';
+    if (portBtn) {
+      if (isWired || (swPort && swPort !== '')) {
+        portBtn.style.display = 'inline-flex';
+        portBtn.title = swName ? (swName + ' - Port ' + swPort) : 'Port ' + swPort;
+      } else {
+        portBtn.style.display = 'none';
+      }
+    }
+  }
+
+  document.getElementById('editModal').classList.add('open');
+}
+function closeEditModal() {
+  document.getElementById('editModal').classList.remove('open');
+}
+function triggerModalPortRestart() {
+  const id = document.getElementById('edit-id').value;
+  if (!id) return;
+  fetch('/clients/restart-port?id=' + encodeURIComponent(id), { method: 'POST' })
+    .then(() => {
+      showToast('{{tr .Lang "clients.port_restarted"}}');
+    })
+    .catch(err => console.error(err));
+}
+function triggerModalReconnect() {
+  const id = document.getElementById('edit-id').value;
+  if (!id) return;
+  fetch('/clients/reconnect?id=' + encodeURIComponent(id), { method: 'POST' })
+    .then(() => {
+      showToast('{{tr .Lang "clients.client_reconnected"}}');
+    })
+    .catch(err => console.error(err));
+}
+</script>
+{{end}}
+

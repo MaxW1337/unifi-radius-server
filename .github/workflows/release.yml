@@ -1,0 +1,126 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & Publish Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          go-version: '1.27.x'
+          cache: true
+
+      - name: Get Version
+        id: get_version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="v1.0.0-dev"
+          fi
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "RAW_VERSION=${VERSION#v}" >> $GITHUB_OUTPUT
+
+      - name: Build Multi-Architecture Binaries
+        env:
+          CGO_ENABLED: 0
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          mkdir -p dist
+          LDFLAGS="-s -w -X main.Version=${VERSION} -X main.GitCommit=${{ github.sha }} -X main.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          
+          # Linux ARM64 (UDM-Pro, UDM-SE)
+          GOOS=linux GOARCH=arm64 go build -ldflags="${LDFLAGS}" -o dist/unifi-radius-linux-arm64 ./cmd/server
+          
+          # Linux AMD64
+          GOOS=linux GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/unifi-radius-linux-amd64 ./cmd/server
+          
+          # Windows AMD64
+          GOOS=windows GOARCH=amd64 go build -ldflags="${LDFLAGS}" -o dist/unifi-radius-windows-amd64.exe ./cmd/server
+
+      - name: Build Debian Packages (.deb)
+        env:
+          RAW_VERSION: ${{ steps.get_version.outputs.RAW_VERSION }}
+        run: |
+          build_deb() {
+            ARCH=$1
+            DEB_DIR="deb_${ARCH}"
+            mkdir -p ${DEB_DIR}/DEBIAN
+            mkdir -p ${DEB_DIR}/data/unifi-radius
+            mkdir -p ${DEB_DIR}/etc/systemd/system
+
+            # Copy binary
+            cp dist/unifi-radius-linux-${ARCH} ${DEB_DIR}/data/unifi-radius/unifi-radius
+            chmod 755 ${DEB_DIR}/data/unifi-radius/unifi-radius
+
+            # Copy systemd service
+            cp scripts/unifi-radius.service ${DEB_DIR}/etc/systemd/system/unifi-radius.service
+
+            # Control file
+            cat <<EOF > ${DEB_DIR}/DEBIAN/control
+          Package: unifi-radius
+          Version: ${RAW_VERSION}
+          Section: net
+          Priority: optional
+          Architecture: ${ARCH}
+          Maintainer: UniFi RADIUS Server Project
+          Description: Lightweight, self-contained RADIUS server with MAB and dynamic VLAN for UniFi UDM-Pro / SE.
+          EOF
+
+            # postinst script
+            cat <<'EOF' > ${DEB_DIR}/DEBIAN/postinst
+          #!/bin/sh
+          set -e
+          systemctl daemon-reload
+          systemctl enable unifi-radius.service
+          systemctl restart unifi-radius.service || true
+          exit 0
+          EOF
+            chmod 755 ${DEB_DIR}/DEBIAN/postinst
+
+            # prerm script
+            cat <<'EOF' > ${DEB_DIR}/DEBIAN/prerm
+          #!/bin/sh
+          set -e
+          systemctl stop unifi-radius.service || true
+          systemctl disable unifi-radius.service || true
+          exit 0
+          EOF
+            chmod 755 ${DEB_DIR}/DEBIAN/prerm
+
+            # Build package
+            dpkg-deb --build ${DEB_DIR} dist/unifi-radius_${RAW_VERSION}_${ARCH}.deb
+          }
+
+          build_deb arm64
+          build_deb amd64
+
+      - name: Generate Checksums
+        run: |
+          cd dist
+          sha256sum * > checksums.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            dist/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+

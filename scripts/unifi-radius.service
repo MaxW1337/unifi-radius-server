@@ -1,0 +1,20 @@
+[Unit]
+Description=UniFi RADIUS Server (MAB & 802.1X Dynamic VLAN)
+After=network.target network-online.target unifi.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/data/unifi-radius
+ExecStart=/data/unifi-radius/unifi-radius -db /data/unifi-radius/radius.db
+Restart=always
+RestartSec=5s
+LimitNOFILE=65535
+
+# Environmental variables
+Environment="GOCACHE=/data/unifi-radius/.cache"
+
+[Install]
+WantedBy=multi-user.target
+

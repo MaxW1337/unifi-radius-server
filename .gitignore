@@ -31,3 +31,49 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# AI Files
+# SQLite & Local data
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Build artifacts
+dist/
+bin/
+unifi-radius
+unifi-radius.exe
+*.deb
+
+# Local certificates/keys for testing
+*.key
+*.crt
+*.p12
+*.pfx
+
+.agent
+
+# Cache
+.cache
+
+# SQLite & Local data
+*.db
+*.db-shm
+*.db-wal
+data/
+
+# Build artifacts
+dist/
+bin/
+unifi-radius
+unifi-radius.exe
+*.deb
+
+# Local certificates/keys for testing
+*.key
+*.crt
+*.p12
+*.pfx
+
+

@@ -1,0 +1,604 @@
+{{define "content"}}
+<div style="max-width: 800px;">
+  <form method="POST" action="/settings/save">
+    <!-- UniFi Integration Settings -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "settings.unifi_title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "settings.unifi_subtitle"}}</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/unifi/test" hx-target="#unifi-test-result" hx-swap="innerHTML">
+          {{tr .Lang "settings.btn_test_conn"}}
+        </button>
+      </div>
+      <div style="padding: 24px;">
+        <div id="unifi-test-result" style="margin-bottom: 16px;"></div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_url"}}</label>
+          <input type="text" name="unifi_url" value="{{.Settings.UniFiURL}}" required class="form-control">
+          <div class="form-text">{{tr .Lang "settings.url_hint"}}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_auth_mode"}}</label>
+          <select name="unifi_auth_mode" id="authModeSelect" class="form-control" onchange="toggleAuthFields()">
+            <option value="apikey" {{if eq .Settings.UniFiAuthMode "apikey"}}selected{{end}}>{{tr .Lang "settings.auth_apikey"}}</option>
+            <option value="credentials" {{if eq .Settings.UniFiAuthMode "credentials"}}selected{{end}}>{{tr .Lang "settings.auth_credentials"}}</option>
+          </select>
+        </div>
+
+        <div id="apiKeyGroup" class="form-group" style="{{if eq .Settings.UniFiAuthMode "credentials"}}display: none;{{end}}">
+          <label class="form-label">{{tr .Lang "settings.label_apikey"}}</label>
+          <input type="password" name="unifi_api_key" value="{{.Settings.UniFiAPIKey}}" placeholder="{{tr .Lang "settings.apikey_ph"}}" class="form-control">
+        </div>
+
+        <div id="credentialsGroup" style="{{if eq .Settings.UniFiAuthMode "apikey"}}display: none;{{end}}">
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "settings.label_user"}}</label>
+            <input type="text" name="unifi_username" value="{{.Settings.UniFiUsername}}" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "settings.label_pass"}}</label>
+            <input type="password" name="unifi_password" placeholder="{{tr .Lang "settings.pass_ph"}}" class="form-control">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_interval"}}</label>
+          <input type="number" name="unifi_sync_interval" value="{{.Settings.UniFiSyncInterval}}" min="1" max="1440" class="form-control" style="width: 140px;">
+          <div class="form-text">{{tr .Lang "settings.interval_hint"}}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Built-in RADIUS Migration Assistant -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "settings.mig_title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "settings.mig_subtitle"}}</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" hx-get="/api/unifi/migration-status" hx-target="#migration-status-box" hx-swap="innerHTML">
+          {{tr .Lang "settings.btn_check_status"}}
+        </button>
+      </div>
+      <div style="padding: 24px;">
+        <div id="migration-status-box" style="margin-bottom: 20px;" hx-get="/api/unifi/migration-status" hx-trigger="load" hx-swap="innerHTML">
+          <div style="font-size: 12px; color: var(--text-dim);">{{tr .Lang "settings.mig_checking"}}</div>
+        </div>
+
+        <div id="migration-result-box" style="margin-bottom: 20px;"></div>
+
+        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; font-size: 13px;">
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="disable_builtin_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+            <span><strong>{{tr .Lang "settings.mig_opt_disable"}}</strong></span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="update_profile_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+            <span><strong>{{tr .Lang "settings.mig_opt_profile"}}</strong></span>
+          </label>
+        </div>
+
+        <button type="button" class="btn btn-primary btn-sm" onclick="performMigration()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
+          {{tr .Lang "settings.btn_start_mig"}}
+        </button>
+      </div>
+    </div>
+
+    <!-- RADIUS Protocol Settings -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "settings.radius_title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "settings.radius_subtitle"}}</p>
+        </div>
+      </div>
+      <div style="padding: 24px;">
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_secret"}}</label>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="global_shared_secret_input" name="global_shared_secret" value="{{.Settings.GlobalSharedSecret}}" required class="form-control" style="font-family: var(--font-mono); letter-spacing: 0.5px;">
+            <button type="button" class="btn btn-secondary" onclick="generateSecret()" title="{{tr .Lang "common.generate"}}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+              {{tr .Lang "common.generate"}}
+            </button>
+            <button type="button" class="btn btn-secondary" id="copySecretBtn" onclick="copySecret()" title="{{tr .Lang "common.copy"}}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              {{tr .Lang "common.copy"}}
+            </button>
+          </div>
+          <div class="form-text">{{tr .Lang "settings.secret_hint"}}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_auth_port"}}</label>
+          <input type="number" name="radius_auth_port" value="{{.Settings.RADIUSAuthPort}}" placeholder="1812" class="form-control" style="width: 140px;">
+          <div class="form-text">{{tr .Lang "settings.port_hint"}}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_default_vlan"}}</label>
+          <select name="default_allow_vlan" class="form-control">
+            {{range .VLANs}}
+              <option value="{{.VLANID}}" {{if eq .VLANID $.Settings.DefaultAllowVLAN}}selected{{end}}>
+                VLAN {{.VLANID}} - {{.Name}} {{if .Subnet}}({{.Subnet}}){{end}}
+              </option>
+            {{else}}
+              <option value="1" selected>VLAN 1 (Default)</option>
+            {{end}}
+          </select>
+          <div class="form-text">{{tr .Lang "settings.vlan_hint"}}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_unknown_mab"}}</label>
+          <select name="unknown_mab_policy" class="form-control">
+            <option value="auto_accept" {{if eq .Settings.UnknownMABPolicy "auto_accept"}}selected{{end}}>{{tr .Lang "settings.opt_allow_default"}}</option>
+            <option value="reject_log" {{if eq .Settings.UnknownMABPolicy "reject_log"}}selected{{end}}>{{tr .Lang "settings.opt_reject_log"}}</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Web UI & Database Retention -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "settings.sec_title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "settings.sec_subtitle"}}</p>
+        </div>
+      </div>
+      <div style="padding: 24px;">
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_web_port"}}</label>
+          <input type="number" name="web_port" value="{{.Settings.WebPort}}" placeholder="9182" class="form-control" style="width: 140px;">
+          <div class="form-text">{{tr .Lang "settings.web_port_hint"}}</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_admin_pass"}}</label>
+          <input type="password" name="web_admin_password" placeholder="{{tr .Lang "settings.admin_pass_ph"}}" class="form-control">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_retention"}}</label>
+          <input type="number" name="log_retention_days" value="{{.Settings.LogRetentionDays}}" min="1" max="365" class="form-control" style="width: 140px;">
+        </div>
+      </div>
+    </div>
+
+    <!-- System & Software-Updates Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "settings.updates_title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "settings.updates_subtitle"}}</p>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" hx-get="/api/update/check?view=settings&force=true" hx-target="#update-settings-result" hx-swap="innerHTML">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          {{tr .Lang "settings.btn_check_updates"}}
+        </button>
+      </div>
+      <div style="padding: 24px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; font-size: 13px; margin-bottom: 12px;">
+          <div>
+            <span style="color: var(--text-muted);">{{tr .Lang "settings.installed_version"}}</span>
+            <strong style="margin-left: 6px; font-size: 14px;">v{{.Version}}</strong>
+          </div>
+          <span class="badge" style="background: rgba(255,255,255,0.08);">UDM-Pro & UDM-SE</span>
+        </div>
+
+        <div id="update-settings-result" hx-get="/api/update/check?view=settings" hx-trigger="load" hx-swap="innerHTML">
+          <div style="color: var(--text-dim); font-size: 12px;">{{tr .Lang "settings.checking_updates"}}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Messenger, Bots & Push-Dienste Panel -->
+    <div class="panel" style="margin-top: 24px;">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "settings.notify_title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "settings.notify_subtitle"}}</p>
+        </div>
+      </div>
+      <div style="padding: 24px;">
+        <!-- Event Filters & Daily Schedule -->
+        <div style="margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border-color);">
+          <label class="form-label" style="font-weight: 600; margin-bottom: 12px; display: block;">{{tr .Lang "settings.notify_events_title"}}</label>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; font-size: 13px;">
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" name="notify_events" value="pending" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+              <span>{{tr .Lang "settings.event_pending"}}</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" name="notify_events" value="reject" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+              <span>{{tr .Lang "settings.event_reject"}}</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" name="notify_events" value="reconnect" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+              <span>{{tr .Lang "settings.event_reconnect"}}</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" name="notify_events" value="ca_expiry" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+              <span>{{tr .Lang "settings.event_ca_expiry"}}</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+              <input type="checkbox" name="notify_events" value="daily" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+              <span>{{tr .Lang "settings.event_daily"}}</span>
+            </label>
+          </div>
+          <div style="margin-top: 14px; display: flex; align-items: center; gap: 12px;">
+            <label class="form-label" style="margin-bottom: 0; font-size: 13px;">{{tr .Lang "settings.label_daily_time"}}:</label>
+            <input type="time" name="daily_summary_time" value="{{if .Settings.DailySummaryTime}}{{.Settings.DailySummaryTime}}{{else}}08:00{{end}}" class="form-control" style="width: 110px; padding: 4px 8px; font-size: 13px;">
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 20px;">
+          <!-- 1. Telegram Bot -->
+          <div style="padding: 18px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <strong style="font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                  <span>✈️ {{tr .Lang "settings.tg_title"}}</span>
+                </strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">{{tr .Lang "settings.tg_desc"}}</p>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                <input type="checkbox" name="telegram_enabled" value="1" {{if .Settings.TelegramEnabled}}checked{{end}} style="width: 18px; height: 18px; accent-color: var(--unifi-blue);">
+                <span>{{tr .Lang "settings.label_tg_enable"}}</span>
+              </label>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
+              <div>
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_tg_token"}}</label>
+                <input type="password" name="telegram_bot_token" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" class="form-control" style="font-size: 12px;">
+              </div>
+              <div>
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_tg_chats"}}</label>
+                <input type="text" name="telegram_chat_ids" value="{{.Settings.TelegramChatIDs}}" placeholder="123456789, 987654321" class="form-control" style="font-size: 12px;">
+              </div>
+            </div>
+            <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
+              <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/notify/test" hx-vals='{"provider": "telegram"}' hx-target="#tg-test-result" hx-swap="innerHTML" style="font-size: 12px;">
+                {{tr .Lang "settings.btn_send_test"}}
+              </button>
+              <div id="tg-test-result"></div>
+            </div>
+          </div>
+
+          <!-- 2. Discord Bot -->
+          <div style="padding: 18px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <strong style="font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                  <span>🎮 {{tr .Lang "settings.dc_title"}}</span>
+                </strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">{{tr .Lang "settings.dc_desc"}}</p>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                <input type="checkbox" name="discord_enabled" value="1" {{if .Settings.DiscordEnabled}}checked{{end}} style="width: 18px; height: 18px; accent-color: var(--unifi-blue);">
+                <span>{{tr .Lang "settings.label_dc_enable"}}</span>
+              </label>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
+              <div>
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_dc_token"}}</label>
+                <input type="password" name="discord_bot_token" placeholder="MTIzNDU2...BotToken" class="form-control" style="font-size: 12px;">
+              </div>
+              <div>
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_dc_channel"}}</label>
+                <input type="text" name="discord_channel_id" value="{{.Settings.DiscordChannelID}}" placeholder="987654321012345678" class="form-control" style="font-size: 12px;">
+              </div>
+            </div>
+            <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
+              <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/notify/test" hx-vals='{"provider": "discord"}' hx-target="#dc-test-result" hx-swap="innerHTML" style="font-size: 12px;">
+                {{tr .Lang "settings.btn_send_test"}}
+              </button>
+              <div id="dc-test-result"></div>
+            </div>
+          </div>
+
+          <!-- 3. Pushover -->
+          <div style="padding: 18px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <strong style="font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                  <span>🔔 {{tr .Lang "settings.po_title"}}</span>
+                </strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">{{tr .Lang "settings.po_desc"}}</p>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                <input type="checkbox" name="pushover_enabled" value="1" {{if .Settings.PushoverEnabled}}checked{{end}} style="width: 18px; height: 18px; accent-color: var(--unifi-blue);">
+                <span>{{tr .Lang "settings.label_po_enable"}}</span>
+              </label>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
+              <div>
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_po_token"}}</label>
+                <input type="password" name="pushover_api_token" placeholder="a1b2c3d4e5f6..." class="form-control" style="font-size: 12px;">
+              </div>
+              <div>
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_po_user"}}</label>
+                <input type="password" name="pushover_user_key" placeholder="u1v2w3x4y5z6..." class="form-control" style="font-size: 12px;">
+              </div>
+            </div>
+            <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
+              <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/notify/test" hx-vals='{"provider": "pushover"}' hx-target="#po-test-result" hx-swap="innerHTML" style="font-size: 12px;">
+                {{tr .Lang "settings.btn_send_test"}}
+              </button>
+              <div id="po-test-result"></div>
+            </div>
+          </div>
+
+          <!-- 4. Home Assistant -->
+          <div style="padding: 18px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+              <div>
+                <strong style="font-size: 14px; display: flex; align-items: center; gap: 8px;">
+                  <span>🏠 {{tr .Lang "settings.ha_title"}}</span>
+                </strong>
+                <p style="font-size: 12px; color: var(--text-muted); margin: 4px 0 0 0;">{{tr .Lang "settings.ha_desc"}}</p>
+              </div>
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+                <input type="checkbox" name="homeassistant_enabled" value="1" {{if .Settings.HomeAssistantEnabled}}checked{{end}} style="width: 18px; height: 18px; accent-color: var(--unifi-blue);">
+                <span>{{tr .Lang "settings.label_ha_enable"}}</span>
+              </label>
+            </div>
+            <div style="margin-top: 12px;">
+              <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_ha_url"}}</label>
+              <input type="text" name="homeassistant_webhook_url" value="{{.Settings.HomeAssistantWebhookURL}}" placeholder="http://homeassistant.local:8123/api/webhook/unifi_radius_alert" class="form-control" style="font-size: 12px;">
+            </div>
+            <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
+              <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/notify/test" hx-vals='{"provider": "homeassistant"}' hx-target="#ha-test-result" hx-swap="innerHTML" style="font-size: 12px;">
+                {{tr .Lang "settings.btn_send_test"}}
+              </button>
+              <div id="ha-test-result"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Remote Backup (WebDAV, S3, SMB/Local) Panel -->
+    <div class="panel" style="margin-top: 24px;">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "settings.remote_backup_title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "settings.remote_backup_subtitle"}}</p>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/backup/remote/test" hx-include="closest form" hx-target="#remote-backup-result" hx-swap="innerHTML">
+            {{tr .Lang "settings.btn_test_backup"}}
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/backup/remote/run" hx-include="closest form" hx-target="#remote-backup-result" hx-swap="innerHTML">
+            {{tr .Lang "settings.btn_run_backup"}}
+          </button>
+        </div>
+      </div>
+      <div style="padding: 24px;">
+        <div id="remote-backup-result" style="margin-bottom: 16px;"></div>
+
+        <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 20px; padding: 12px 16px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px;">
+          <input type="checkbox" name="remote_backup_enabled" value="1" id="remote_backup_enabled_cb" {{if .Settings.RemoteBackupEnabled}}checked{{end}} style="width: 18px; height: 18px; accent-color: var(--unifi-blue);">
+          <label for="remote_backup_enabled_cb" style="font-size: 14px; font-weight: 600; cursor: pointer;">
+            {{tr .Lang "settings.remote_backup_enable"}}
+          </label>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.remote_backup_type"}}</label>
+          <select name="remote_backup_type" id="remoteBackupTypeSelect" class="form-control" onchange="updateRemoteBackupUI()">
+            <option value="webdav" {{if eq .Settings.RemoteBackupType "webdav"}}selected{{end}}>{{tr .Lang "settings.remote_backup_type_webdav"}}</option>
+            <option value="s3" {{if eq .Settings.RemoteBackupType "s3"}}selected{{end}}>{{tr .Lang "settings.remote_backup_type_s3"}}</option>
+            <option value="local" {{if eq .Settings.RemoteBackupType "local"}}selected{{end}}>{{tr .Lang "settings.remote_backup_type_local"}}</option>
+          </select>
+        </div>
+
+        <div id="field-backup-url" class="form-group">
+          <label class="form-label" id="label-backup-url">{{tr .Lang "settings.remote_backup_url"}}</label>
+          <input type="text" name="remote_backup_url" id="input-backup-url" value="{{.Settings.RemoteBackupURL}}" class="form-control" placeholder="https://nextcloud.example.com/remote.php/dav/files/user/backups/">
+        </div>
+
+        <div id="field-backup-path" class="form-group">
+          <label class="form-label" id="label-backup-path">{{tr .Lang "settings.remote_backup_path"}}</label>
+          <input type="text" name="remote_backup_path" id="input-backup-path" value="{{.Settings.RemoteBackupPath}}" class="form-control" placeholder="/mnt/backup/radius">
+          <div class="form-text" id="hint-backup-path"></div>
+        </div>
+
+        <div id="credentials-backup-fields" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px;">
+          <div class="form-group">
+            <label class="form-label" id="label-backup-user">{{tr .Lang "settings.remote_backup_user"}}</label>
+            <input type="text" name="remote_backup_username" value="{{.Settings.RemoteBackupUsername}}" class="form-control">
+          </div>
+          <div class="form-group">
+            <label class="form-label" id="label-backup-pass">{{tr .Lang "settings.remote_backup_pass"}}</label>
+            <input type="password" name="remote_backup_password" placeholder="{{tr .Lang "settings.remote_backup_pass_hint"}}" class="form-control">
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-top: 8px;">
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "settings.remote_backup_schedule"}}</label>
+            <input type="time" name="remote_backup_schedule" value="{{.Settings.RemoteBackupSchedule}}" class="form-control" style="width: 140px;">
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "settings.remote_backup_retention"}}</label>
+            <input type="number" name="remote_backup_retention" value="{{.Settings.RemoteBackupRetention}}" min="0" max="365" class="form-control" style="width: 140px;">
+            <div class="form-text">{{tr .Lang "settings.remote_backup_retention_hint"}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
+      <button type="submit" class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;">
+        {{tr .Lang "settings.btn_save_all"}}
+      </button>
+    </div>
+  </form>
+
+  <!-- Backup & Restore Panel -->
+  <div class="panel" style="margin-top: 24px;">
+    <div class="panel-header">
+      <div>
+        <h3 class="panel-title">{{tr .Lang "settings.backup_title"}}</h3>
+        <p class="panel-subtitle">{{tr .Lang "settings.backup_subtitle"}}</p>
+      </div>
+    </div>
+    <div style="padding: 24px;">
+      <div style="display: flex; gap: 20px; flex-wrap: wrap; align-items: stretch;">
+        <!-- Download Backup -->
+        <div style="flex: 1; min-width: 280px; padding: 18px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600;">{{tr .Lang "settings.backup_download_title"}}</h4>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+              {{tr .Lang "settings.backup_download_desc"}}
+            </p>
+          </div>
+          <div>
+            <a href="/api/backup/download" class="btn btn-primary btn-sm" style="text-decoration: none; display: inline-flex; align-items: center; gap: 8px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+              {{tr .Lang "settings.btn_download_backup"}}
+            </a>
+          </div>
+        </div>
+
+        <!-- Restore Backup -->
+        <div style="flex: 1; min-width: 280px; padding: 18px; background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; justify-content: space-between;">
+          <div>
+            <h4 style="margin: 0 0 8px 0; font-size: 14px; font-weight: 600;">{{tr .Lang "settings.backup_restore_title"}}</h4>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 16px; line-height: 1.5;">
+              {{tr .Lang "settings.backup_restore_desc"}}
+            </p>
+          </div>
+          <form method="POST" action="/api/backup/restore" enctype="multipart/form-data" onsubmit="return confirm('{{tr .Lang "settings.confirm_restore"}}');" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+            <input type="file" name="backup_file" required accept=".db,.sqlite,.sqlite3" class="form-control" style="font-size: 12px; padding: 5px 8px; flex: 1; min-width: 160px;">
+            <button type="submit" class="btn btn-danger btn-sm" style="display: inline-flex; align-items: center; gap: 6px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 16 12 12 8 16"></polyline><line x1="12" y1="12" x2="12" y2="21"></line><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path></svg>
+              {{tr .Lang "settings.btn_restore"}}
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function toggleAuthFields() {
+  const mode = document.getElementById('authModeSelect').value;
+  if (mode === 'apikey') {
+    document.getElementById('apiKeyGroup').style.display = 'block';
+    document.getElementById('credentialsGroup').style.display = 'none';
+  } else {
+    document.getElementById('apiKeyGroup').style.display = 'none';
+    document.getElementById('credentialsGroup').style.display = 'block';
+  }
+}
+
+function performMigration() {
+  const disableBuiltin = document.getElementById('disable_builtin_cb').checked ? "1" : "0";
+  const updateProfile = document.getElementById('update_profile_cb').checked ? "1" : "0";
+
+  document.getElementById('migration-result-box').innerHTML = '<div style="color: var(--text-dim); font-size: 12px; padding: 10px;">Führe Migration und Konfiguration durch...</div>';
+
+  const formData = new FormData();
+  formData.append('disable_builtin', disableBuiltin);
+  formData.append('update_profile', updateProfile);
+
+  fetch('/api/unifi/migrate', {
+    method: 'POST',
+    body: formData
+  })
+  .then(resp => resp.text())
+  .then(html => {
+    document.getElementById('migration-result-box').innerHTML = html;
+    // Refresh status box
+    htmx.ajax('GET', '/api/unifi/migration-status', {target: '#migration-status-box'});
+  })
+  .catch(err => {
+    document.getElementById('migration-result-box').innerHTML = '<div class="badge reject">Fehler bei Migration: ' + err + '</div>';
+  });
+}
+
+function generateSecret() {
+  const charset = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const array = new Uint8Array(24);
+  window.crypto.getRandomValues(array);
+  let secret = '';
+  for (let i = 0; i < array.length; i++) {
+    secret += charset[array[i] % charset.length];
+  }
+  const input = document.getElementById('global_shared_secret_input');
+  input.value = secret;
+  input.focus();
+  input.select();
+}
+
+function copySecret() {
+  const input = document.getElementById('global_shared_secret_input');
+  if (!input.value) return;
+  navigator.clipboard.writeText(input.value).then(() => {
+    const btn = document.getElementById('copySecretBtn');
+    const originalHTML = btn.innerHTML;
+    btn.textContent = 'Kopiert!';
+    btn.style.color = 'var(--green)';
+    setTimeout(() => {
+      btn.innerHTML = originalHTML;
+      btn.style.color = '';
+    }, 2000);
+  });
+}
+
+function updateRemoteBackupUI() {
+  const typeSelect = document.getElementById('remoteBackupTypeSelect');
+  if (!typeSelect) return;
+  const t = typeSelect.value;
+  const fieldUrl = document.getElementById('field-backup-url');
+  const fieldPath = document.getElementById('field-backup-path');
+  const labelUrl = document.getElementById('label-backup-url');
+  const inputUrl = document.getElementById('input-backup-url');
+  const labelPath = document.getElementById('label-backup-path');
+  const inputPath = document.getElementById('input-backup-path');
+  const hintPath = document.getElementById('hint-backup-path');
+  const credFields = document.getElementById('credentials-backup-fields');
+  const labelUser = document.getElementById('label-backup-user');
+  const labelPass = document.getElementById('label-backup-pass');
+
+  if (t === 'webdav') {
+    fieldUrl.style.display = 'block';
+    labelUrl.textContent = 'WebDAV Server URL';
+    inputUrl.placeholder = 'https://nextcloud.example.com/remote.php/dav/files/user/backups/';
+    fieldPath.style.display = 'none';
+    credFields.style.display = 'grid';
+    labelUser.textContent = 'Benutzername';
+    labelPass.textContent = 'Passwort / App-Token';
+  } else if (t === 's3') {
+    fieldUrl.style.display = 'block';
+    labelUrl.textContent = 'S3 Endpoint URL';
+    inputUrl.placeholder = 'https://s3.eu-central-1.amazonaws.com oder http://minio.local:9000';
+    fieldPath.style.display = 'block';
+    labelPath.textContent = 'S3 Bucket & Präfix';
+    inputPath.placeholder = 'backup-bucket/unifi-radius';
+    hintPath.textContent = 'Bucket-Name (optional gefolgt von /unterordner)';
+    credFields.style.display = 'grid';
+    labelUser.textContent = 'AWS Access Key ID';
+    labelPass.textContent = 'AWS Secret Access Key';
+  } else if (t === 'local') {
+    fieldUrl.style.display = 'none';
+    fieldPath.style.display = 'block';
+    labelPath.textContent = 'Lokales / Gemountetes Zielverzeichnis';
+    inputPath.placeholder = '/mnt/backup/radius oder C:\\backups';
+    hintPath.textContent = 'Pfad zu einem gemounteten SMB/NFS-Share, USB-Laufwerk oder lokalem Ordner';
+    credFields.style.display = 'none';
+  }
+}
+document.addEventListener('DOMContentLoaded', updateRemoteBackupUI);
+</script>
+{{end}}
+
