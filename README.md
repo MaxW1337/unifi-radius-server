@@ -7,8 +7,6 @@
 
 Ein leichtgewichtiger, robuster und autarker **RADIUS-Server in Go**, der direkt nativ auf der **UniFi Dream Machine Pro (UDM-Pro)** und **UDM-SE** (UniFi OS 3.x / 4.x, ARM64) läuft.
 
-![UniFi RADIUS Server](https://raw.githubusercontent.com/MaxW1337/unifi-radius-server/main/docs/preview.png)
-
 ---
 
 ## Highlights
