@@ -1422,14 +1422,47 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	totalClients, migratedClients, _ := s.db.CountClients()
+	nowStr := time.Now().Format("15:04:05")
+
+	var radiusWLANs []string
+	if wlans, wErr := client.ListWLANs(); wErr == nil {
+		for _, wl := range wlans {
+			if wl.RadiusMacAuth || wl.RadiusProfileID != "" {
+				radiusWLANs = append(radiusWLANs, wl.Name)
+			}
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	if enabled {
 		secretMasked := "***"
 		if len(secret) > 3 {
 			secretMasked = secret[:2] + strings.Repeat("*", len(secret)-2)
 		}
+
+		wlanInfo := ""
+		if len(radiusWLANs) > 0 {
+			wlanInfo = fmt.Sprintf(`<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Aktive RADIUS-WLANs in UniFi: <strong>%s</strong></div>`,
+				template.HTMLEscapeString(strings.Join(radiusWLANs, ", ")))
+		}
+
+		sqliteInfo := ""
+		if migratedClients > 0 {
+			sqliteInfo = fmt.Sprintf(`
+			<div style="display: flex; align-items: center; gap: 6px; color: var(--success); font-size: 12px; margin-top: 6px;">
+				<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+				<span><strong>%d</strong> von %d Konten bereits in lokaler SQLite-Datenbank aktiv</span>
+			</div>`, migratedClients, count)
+		}
+
+		tipText := "Tipp: Führe die Migration durch, um bestehende MAB-Geräte zu übernehmen und Port 1812 freizugeben."
+		if migratedClients >= count && count > 0 {
+			tipText = "Tipp: Alle MAB-Geräte sind bereits in SQLite vorhanden. Klicke unten auf <strong>\"Migration starten\"</strong>, um die WLANs auf das neue RADIUS-Profil umzustellen und den internen FreeRADIUS automatisch zu stoppen."
+		}
+
 		html := fmt.Sprintf(`
-		<div style="background-color: var(--yellow-bg); border: 1px solid var(--yellow); padding: 12px 16px; border-radius: 8px;">
+		<div style="background-color: var(--yellow-bg); border: 1px solid var(--yellow); padding: 14px 18px; border-radius: 8px;">
 			<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
 				<strong style="color: var(--yellow);">Integrierter UniFi RADIUS Server ist AKTIV</strong>
 				<span class="badge pending">Aktiv auf UDM</span>
@@ -1437,18 +1470,42 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 			<div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
 				Gefundene lokale Benutzerkonten / MAB-Einträge: <strong>%d</strong> &bull; Shared Secret konfiguriert: <code>%s</code>
 			</div>
-			<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">
-				Tipp: Führe die Migration durch, um bestehende MAB-Geräte zu übernehmen und Port 1812 freizugeben.
+			%s
+			%s
+			<div style="font-size: 11px; color: var(--text-dim); margin-top: 6px;">
+				%s
+			</div>
+			<div style="display: flex; justify-content: flex-end; font-size: 10px; color: var(--text-dim); margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 4px;">
+				Zuletzt geprüft: %s Uhr
 			</div>
 		</div>
-		`, count, template.HTMLEscapeString(secretMasked))
+		`, count, template.HTMLEscapeString(secretMasked), sqliteInfo, wlanInfo, tipText, nowStr)
 		_, _ = w.Write([]byte(html))
 	} else {
+		wlanInfo := ""
+		if len(radiusWLANs) > 0 {
+			wlanInfo = fmt.Sprintf(`<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Aktive RADIUS-WLANs (Profil 'UDM-Internal-RADIUS'): <strong>%s</strong></div>`,
+				template.HTMLEscapeString(strings.Join(radiusWLANs, ", ")))
+		}
+
 		html := fmt.Sprintf(`
-		<div style="background-color: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); padding: 10px 14px; border-radius: 8px; font-size: 12px; color: var(--text-muted);">
-			Integrierter UniFi RADIUS-Server: <strong>Inaktiv / Deaktiviert</strong> &bull; Lokale Accounts in UniFi: <strong>%d</strong>
+		<div style="background-color: var(--card-bg); border: 1px solid var(--border-color); padding: 14px 18px; border-radius: 8px;">
+			<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+				<strong style="color: var(--success); display: flex; align-items: center; gap: 6px;">
+					<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+					Integrierter UniFi RADIUS-Server: Inaktiv / Deaktiviert
+				</strong>
+				<span class="badge success">Port 1812 freigegeben</span>
+			</div>
+			<div style="font-size: 12px; color: var(--text-muted); line-height: 1.5;">
+				Lokale SQLite-Datenbank: <strong>%d</strong> Clients aktiv (davon <strong>%d</strong> aus UniFi migriert) &bull; UniFi-Accounts: %d
+			</div>
+			%s
+			<div style="display: flex; justify-content: flex-end; font-size: 10px; color: var(--text-dim); margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 4px;">
+				Zuletzt geprüft: %s Uhr
+			</div>
 		</div>
-		`, count)
+		`, totalClients, migratedClients, count, wlanInfo, nowStr)
 		_, _ = w.Write([]byte(html))
 	}
 }

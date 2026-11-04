@@ -152,17 +152,7 @@ func MigrateBuiltinRadius(client *Client, db *database.DB, disableBuiltin, updat
 			report.MABDevicesMigrated, report.UsersMigrated))
 	}
 
-	// 3. Disable built-in RADIUS server if requested (to release UDP port 1812)
-	if disableBuiltin && report.BuiltinRadiusDetected {
-		if err := client.DisableBuiltinRadius(); err != nil {
-			report.Messages = append(report.Messages, fmt.Sprintf("Warnung: Built-in RADIUS konnte nicht automatisch deaktiviert werden: %v", err))
-		} else {
-			report.BuiltinRadiusDisabled = true
-			report.Messages = append(report.Messages, "Integrierter UniFi RADIUS-Dienst wurde erfolgreich deaktiviert (UDP-Port 1812 freigegeben).")
-		}
-	}
-
-	// 4. Update / Create UniFi RADIUS Profile pointing to this server
+	// 3. Update / Create UniFi RADIUS Profile pointing to this server & switch WLANs
 	if updateProfile {
 		profileName := "UDM-Internal-RADIUS"
 		serverSecret := settings.GlobalSharedSecret
@@ -175,6 +165,29 @@ func MigrateBuiltinRadius(client *Client, db *database.DB, disableBuiltin, updat
 			report.ProfileUpdated = true
 			report.ProfileName = profile.Name
 			report.Messages = append(report.Messages, fmt.Sprintf("UniFi RADIUS-Profil '%s' (127.0.0.1:%d, VLAN Support: Aktiv) erfolgreich erstellt/aktualisiert.", profile.Name, serverPort))
+
+			// Automatically switch any WLANs using RADIUS to the new profile
+			if wlans, wErr := client.ListWLANs(); wErr == nil {
+				for _, w := range wlans {
+					if (w.RadiusProfileID != "" && w.RadiusProfileID != profile.ID) || w.RadiusMacAuth {
+						if uErr := client.UpdateWLANRadiusProfile(w.ID, profile.ID); uErr == nil {
+							report.Messages = append(report.Messages, fmt.Sprintf("WLAN '%s' erfolgreich auf RADIUS-Profil '%s' umgestellt.", w.Name, profile.Name))
+						} else {
+							report.Messages = append(report.Messages, fmt.Sprintf("Warnung: WLAN '%s' konnte nicht auf Profil '%s' umgestellt werden: %v", w.Name, profile.Name, uErr))
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// 4. Disable built-in RADIUS server if requested (to release UDP port 1812)
+	if disableBuiltin && report.BuiltinRadiusDetected {
+		if err := client.DisableBuiltinRadius(); err != nil {
+			report.Messages = append(report.Messages, fmt.Sprintf("Warnung: Built-in RADIUS konnte nicht automatisch deaktiviert werden: %v", err))
+		} else {
+			report.BuiltinRadiusDisabled = true
+			report.Messages = append(report.Messages, "Integrierter UniFi RADIUS-Dienst wurde erfolgreich deaktiviert (UDP-Port 1812 freigegeben).")
 		}
 	}
 

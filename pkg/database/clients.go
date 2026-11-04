@@ -347,3 +347,14 @@ func nullString(s string) sql.NullString {
 	return sql.NullString{String: s, Valid: true}
 }
 
+// CountClients returns the total number of clients and the number of clients migrated from UniFi.
+func (db *DB) CountClients() (total int, migrated int, err error) {
+	err = db.QueryRow("SELECT COUNT(*) FROM clients").Scan(&total)
+	if err != nil {
+		return 0, 0, err
+	}
+	_ = db.QueryRow("SELECT COUNT(*) FROM clients WHERE description LIKE '%Migriert%' OR description LIKE '%UniFi%'").Scan(&migrated)
+	return total, migrated, nil
+}
+
+

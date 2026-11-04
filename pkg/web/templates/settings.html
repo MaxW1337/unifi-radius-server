@@ -1,4 +1,9 @@
 {{define "content"}}
+<style>
+#btn-check-mig-status.htmx-request .mig-icon { display: none !important; }
+#btn-check-mig-status:not(.htmx-request) .spinner { display: none !important; }
+#btn-check-mig-status.htmx-request .spinner { display: inline-block !important; }
+</style>
 <div style="max-width: 800px;">
   <form method="POST" action="/settings/save">
     <!-- UniFi Integration Settings -->
@@ -60,25 +65,32 @@
           <h3 class="panel-title">{{tr .Lang "settings.mig_title"}}</h3>
           <p class="panel-subtitle">{{tr .Lang "settings.mig_subtitle"}}</p>
         </div>
-        <button type="button" class="btn btn-secondary btn-sm" hx-get="/api/unifi/migration-status" hx-target="#migration-status-box" hx-swap="innerHTML">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-check-mig-status"
+                hx-get="/api/unifi/migration-status" hx-target="#migration-status-box" hx-swap="innerHTML"
+                hx-indicator="#btn-check-mig-status">
+          <svg class="htmx-indicator spinner" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="10"></circle></svg>
+          <svg class="mig-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 6px;"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
           {{tr .Lang "settings.btn_check_status"}}
         </button>
       </div>
       <div style="padding: 24px;">
         <div id="migration-status-box" style="margin-bottom: 20px;" hx-get="/api/unifi/migration-status" hx-trigger="load" hx-swap="innerHTML">
-          <div style="font-size: 12px; color: var(--text-dim);">{{tr .Lang "settings.mig_checking"}}</div>
+          <div style="font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 8px;">
+            <svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="10"></circle></svg>
+            {{tr .Lang "settings.mig_checking"}}
+          </div>
         </div>
 
         <div id="migration-result-box" style="margin-bottom: 20px;"></div>
 
         <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; font-size: 13px;">
           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-            <input type="checkbox" id="disable_builtin_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
-            <span><strong>{{tr .Lang "settings.mig_opt_disable"}}</strong></span>
+            <input type="checkbox" id="update_profile_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+            <span><strong>{{tr .Lang "settings.mig_opt_profile"}}</strong> (inkl. automatischer Umstellung aller RADIUS-WLANs)</span>
           </label>
           <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-            <input type="checkbox" id="update_profile_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
-            <span><strong>{{tr .Lang "settings.mig_opt_profile"}}</strong></span>
+            <input type="checkbox" id="disable_builtin_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
+            <span><strong>{{tr .Lang "settings.mig_opt_disable"}}</strong></span>
           </label>
         </div>
 
@@ -559,7 +571,7 @@ function performMigration() {
   const disableBuiltin = document.getElementById('disable_builtin_cb').checked ? "1" : "0";
   const updateProfile = document.getElementById('update_profile_cb').checked ? "1" : "0";
 
-  document.getElementById('migration-result-box').innerHTML = '<div style="color: var(--text-dim); font-size: 12px; padding: 10px;">Führe Migration und Konfiguration durch...</div>';
+  document.getElementById('migration-result-box').innerHTML = '<div style="color: var(--text-dim); font-size: 12px; padding: 12px; display: flex; align-items: center; gap: 8px;"><svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="10"></circle></svg> Führe Migration, Profil-Konfiguration und WLAN-Umstellung durch...</div>';
 
   const formData = new FormData();
   formData.append('disable_builtin', disableBuiltin);

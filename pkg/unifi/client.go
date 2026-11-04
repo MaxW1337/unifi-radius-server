@@ -637,7 +637,22 @@ func (c *Client) DisableBuiltinRadius() error {
 					apiSuccess = true
 					break
 				}
-				lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, ep)
+				var errResp struct {
+					Meta struct {
+						Msg  string `json:"msg"`
+						Type string `json:"type"`
+						Name string `json:"name"`
+					} `json:"meta"`
+				}
+				if json.NewDecoder(resp.Body).Decode(&errResp) == nil && errResp.Meta.Msg != "" {
+					if errResp.Meta.Msg == "api.err.ObjectReferredBy" {
+						lastErr = fmt.Errorf("UniFi blockiert Deaktivierung: %s '%s' referenziert noch das Built-in RADIUS Profil", errResp.Meta.Type, errResp.Meta.Name)
+					} else {
+						lastErr = fmt.Errorf("UniFi Fehler: %s", errResp.Meta.Msg)
+					}
+				} else {
+					lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, ep)
+				}
 			}
 
 			// 2. Try PUT to /rest/setting/radius/{id} (UniFi REST endpoint)
@@ -657,7 +672,22 @@ func (c *Client) DisableBuiltinRadius() error {
 						apiSuccess = true
 						break
 					}
-					lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, ep)
+					var errResp struct {
+						Meta struct {
+							Msg  string `json:"msg"`
+							Type string `json:"type"`
+							Name string `json:"name"`
+						} `json:"meta"`
+					}
+					if json.NewDecoder(resp.Body).Decode(&errResp) == nil && errResp.Meta.Msg != "" {
+						if errResp.Meta.Msg == "api.err.ObjectReferredBy" {
+							lastErr = fmt.Errorf("UniFi blockiert Deaktivierung: %s '%s' referenziert noch das Built-in RADIUS Profil", errResp.Meta.Type, errResp.Meta.Name)
+						} else {
+							lastErr = fmt.Errorf("UniFi Fehler: %s", errResp.Meta.Msg)
+						}
+					} else {
+						lastErr = fmt.Errorf("HTTP %d from %s", resp.StatusCode, ep)
+					}
 				}
 			}
 
@@ -889,3 +919,77 @@ func (c *Client) CreateOrUpdateRadiusProfile(profileName, serverIP string, port 
 
 	return nil, fmt.Errorf("failed to save radius profile in UniFi")
 }
+
+// UniFiWLAN represents a wireless network configured in UniFi Network.
+type UniFiWLAN struct {
+	ID              string `json:"_id,omitempty"`
+	Name            string `json:"name"`
+	Enabled         bool   `json:"enabled"`
+	Security        string `json:"security"`
+	RadiusProfileID string `json:"radiusprofile_id,omitempty"`
+	RadiusMacAuth   bool   `json:"radius_mac_auth_enabled"`
+}
+
+// ListWLANs returns all wireless networks configured in UniFi Network.
+func (c *Client) ListWLANs() ([]UniFiWLAN, error) {
+	endpoints := []string{
+		fmt.Sprintf("/proxy/network/api/s/%s/rest/wlanconf", c.cfg.Site),
+		fmt.Sprintf("/api/s/%s/rest/wlanconf", c.cfg.Site),
+	}
+
+	for _, ep := range endpoints {
+		resp, err := c.doRequest(http.MethodGet, ep, nil)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		var apiResp unifiResponse
+		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+			return nil, err
+		}
+
+		var wlans []UniFiWLAN
+		for _, raw := range apiResp.Data {
+			var w UniFiWLAN
+			if err := json.Unmarshal(raw, &w); err == nil {
+				wlans = append(wlans, w)
+			}
+		}
+		return wlans, nil
+	}
+
+	return nil, fmt.Errorf("failed to list WLANs from UniFi")
+}
+
+// UpdateWLANRadiusProfile updates the RADIUS profile associated with a specific WLAN.
+func (c *Client) UpdateWLANRadiusProfile(wlanID, profileID string) error {
+	payload := map[string]string{
+		"radiusprofile_id": profileID,
+	}
+	bodyBytes, _ := json.Marshal(payload)
+
+	endpoints := []string{
+		fmt.Sprintf("/proxy/network/api/s/%s/rest/wlanconf/%s", c.cfg.Site, wlanID),
+		fmt.Sprintf("/api/s/%s/rest/wlanconf/%s", c.cfg.Site, wlanID),
+	}
+
+	for _, ep := range endpoints {
+		resp, err := c.doRequest(http.MethodPut, ep, bytes.NewReader(bodyBytes))
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("failed to update WLAN radius profile in UniFi")
+}
+
