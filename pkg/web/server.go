@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -246,8 +247,9 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 	mux.HandleFunc("/api/unifi/migration-status", s.requireAuth(s.handleMigrationStatus))
 	mux.HandleFunc("/api/unifi/migrate", s.requireAuth(s.csrfProtect(s.handlePerformMigration)))
 
-	// Update check
+	// Update check & self-update
 	mux.HandleFunc("/api/update/check", s.requireAuth(s.handleUpdateCheck))
+	mux.HandleFunc("/api/update/apply", s.requireAuth(s.csrfProtect(s.handleApplyUpdate)))
 
 	// Backup & Restore
 	mux.HandleFunc("/api/backup/download", s.requireAuth(s.handleDownloadBackup))
@@ -299,6 +301,11 @@ func (s *Server) SetBackupService(b *backup.Service) {
 // BackupService returns the backup service.
 func (s *Server) BackupService() *backup.Service {
 	return s.backupSvc
+}
+
+// UpdaterService returns the software updater service.
+func (s *Server) UpdaterService() *updater.Service {
+	return s.updater
 }
 
 // Start begins listening on the configured HTTP port.
@@ -1236,6 +1243,21 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		settings.RemoteBackupRetention = bRet
 	}
 
+	// Automated Self-Update
+	settings.AutoUpdateEnabled = r.FormValue("auto_update_enabled") == "1" || r.FormValue("auto_update_enabled") == "on"
+	if uSched := strings.TrimSpace(r.FormValue("auto_update_schedule")); uSched != "" {
+		settings.AutoUpdateSchedule = uSched
+	}
+	if uTime := strings.TrimSpace(r.FormValue("auto_update_time")); uTime != "" {
+		settings.AutoUpdateTime = uTime
+	}
+	if uWday, err := strconv.Atoi(r.FormValue("auto_update_weekday")); err == nil && uWday >= 1 && uWday <= 7 {
+		settings.AutoUpdateWeekday = uWday
+	}
+	if uDay, err := strconv.Atoi(r.FormValue("auto_update_day")); err == nil && uDay >= 1 && uDay <= 31 {
+		settings.AutoUpdateDay = uDay
+	}
+
 	_ = s.db.UpdateSettings(settings)
 
 	if s.notifySvc != nil {
@@ -1691,13 +1713,19 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 	case "settings":
 		if info.UpdateAvailable {
 			fmt.Fprintf(w, `
-			<div style="background-color: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 14px; margin-top: 12px; display: flex; justify-content: space-between; align-items: center;">
+			<div style="background-color: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 16px; margin-top: 14px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
 				<div>
-					<div style="font-weight: 600; color: var(--yellow); font-size: 14px;">⚡ Neue Version v%s verfügbar!</div>
-					<div style="font-size: 12px; color: var(--text-muted); margin-top: 2px;">Aktuell installiert: v%s</div>
+					<div style="font-weight: 600; color: var(--yellow); font-size: 15px;">⚡ Neue Version v%s verfügbar!</div>
+					<div style="font-size: 12px; color: var(--text-muted); margin-top: 3px;">Aktuell installiert: v%s &bull; Veröffentlicht auf GitHub</div>
 				</div>
-				<a href="%s" target="_blank" class="btn btn-primary btn-sm" style="text-decoration: none;">Release & Changelog anzeigen</a>
-			</div>`, info.LatestVersion, info.CurrentVersion, info.ReleaseURL)
+				<div style="display: flex; gap: 10px; align-items: center;">
+					<a href="%s" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration: none;">Release-Notes</a>
+					<button type="button" class="btn btn-primary btn-sm" onclick="triggerOneClickUpdate('%s')" style="display: inline-flex; align-items: center; gap: 6px;">
+						<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+						<span>⚡ Jetzt auf v%s aktualisieren (One-Click)</span>
+					</button>
+				</div>
+			</div>`, info.LatestVersion, info.CurrentVersion, info.ReleaseURL, info.LatestVersion, info.LatestVersion)
 		} else if info.Error != "" {
 			fmt.Fprintf(w, `
 			<div style="font-size: 12px; color: var(--text-dim); margin-top: 10px;">
@@ -1714,20 +1742,77 @@ func (s *Server) handleUpdateCheck(w http.ResponseWriter, r *http.Request) {
 		// Topbar banner
 		if info.UpdateAvailable {
 			fmt.Fprintf(w, `
-			<div id="update-notification" style="background: linear-gradient(90deg, rgba(234, 179, 8, 0.15) 0%%, rgba(234, 179, 8, 0.05) 100%%); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; animation: fadeIn 0.3s ease-in-out;">
+			<div id="update-notification" style="background: linear-gradient(90deg, rgba(234, 179, 8, 0.15) 0%%, rgba(234, 179, 8, 0.05) 100%%); border: 1px solid rgba(234, 179, 8, 0.3); border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; animation: fadeIn 0.3s ease-in-out;">
 				<div style="display: flex; align-items: center; gap: 10px; font-size: 13px;">
 					<span class="pulse-dot" style="background-color: var(--yellow);"></span>
 					<span><strong>Update verfügbar:</strong> Version <strong>v%s</strong> ist verfügbar (Installiert: v%s).</span>
 				</div>
 				<div style="display: flex; align-items: center; gap: 8px;">
-					<a href="%s" target="_blank" class="btn btn-sm btn-primary" style="text-decoration: none; font-size: 12px;">Release anzeigen</a>
-					<button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('update-notification').remove();" style="font-size: 12px;">Ausblenden</button>
+					<button type="button" class="btn btn-sm btn-primary" onclick="triggerOneClickUpdate('%s')" style="font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
+						<span>⚡ Jetzt aktualisieren</span>
+					</button>
+					<a href="%s" target="_blank" class="btn btn-sm btn-secondary" style="text-decoration: none; font-size: 12px;">Release</a>
+					<button type="button" class="btn btn-sm btn-secondary" onclick="document.getElementById('update-notification').remove();" style="font-size: 12px;">✕</button>
 				</div>
-			</div>`, info.LatestVersion, info.CurrentVersion, info.ReleaseURL)
+			</div>`, info.LatestVersion, info.CurrentVersion, info.LatestVersion, info.ReleaseURL)
 		} else {
 			fmt.Fprint(w, `<div id="update-notification" style="display: none;"></div>`)
 		}
 	}
+}
+
+func (s *Server) handleApplyUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	if s.updater == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Update-Dienst ist nicht initialisiert",
+		})
+		return
+	}
+
+	version := strings.TrimSpace(r.FormValue("version"))
+	s.publishLog(eventbus.LogLevelInfo, "UPDATE", fmt.Sprintf("Starte One-Click Self-Update (Zielversion: %s)...", version))
+
+	if err := s.updater.ApplyUpdate(version); err != nil {
+		s.publishLog(eventbus.LogLevelError, "UPDATE", fmt.Sprintf("Self-Update fehlgeschlagen: %v", err))
+		w.WriteHeader(http.StatusInternalServerError)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Update fehlgeschlagen: %v", err),
+		})
+		return
+	}
+
+	s.publishLog(eventbus.LogLevelInfo, "UPDATE", fmt.Sprintf("Update auf v%s erfolgreich installiert. Server startet in 2 Sekunden neu...", version))
+
+	if s.notifySvc != nil {
+		targetDesc := version
+		if targetDesc == "" {
+			targetDesc = "neueste Version"
+		}
+		s.notifySvc.Dispatch(r.Context(), notify.NotificationEvent{
+			Type:      "system_update",
+			Title:     "⚡ Software-Update erfolgreich installiert",
+			Message:   fmt.Sprintf("UniFi RADIUS Server wurde per One-Click auf %s aktualisiert. Der Server startet jetzt neu.", targetDesc),
+			Timestamp: time.Now(),
+		})
+	}
+
+	s.updater.TriggerRestart()
+
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":      true,
+		"message":      "Update erfolgreich installiert! Der Server startet neu. Die Seite lädt automatisch neu...",
+		"reload_delay": 5,
+	})
 }
 
 func (s *Server) handleDownloadBackup(w http.ResponseWriter, r *http.Request) {

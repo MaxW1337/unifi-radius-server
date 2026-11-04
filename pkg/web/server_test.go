@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -529,6 +530,98 @@ func TestBackupDownloadEndpoint(t *testing.T) {
 	}
 	if rr.Body.Len() == 0 {
 		t.Errorf("Expected non-empty backup database download")
+	}
+}
+
+func TestAutoUpdateSettingsPersistence(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	form := url.Values{}
+	form.Set("unifi_url", "https://192.168.1.1")
+	form.Set("unifi_auth_mode", "apikey")
+	form.Set("global_shared_secret", "test_secret_123")
+	form.Set("web_port", "9182")
+	form.Set("radius_auth_port", "1812")
+	form.Set("default_allow_vlan", "1")
+	form.Set("unknown_mab_policy", "reject_log")
+	form.Set("log_retention_days", "30")
+
+	// Auto Update fields
+	form.Set("auto_update_enabled", "1")
+	form.Set("auto_update_schedule", "weekly")
+	form.Set("auto_update_time", "04:30")
+	form.Set("auto_update_weekday", "3")
+	form.Set("auto_update_day", "15")
+
+	req := httptest.NewRequest(http.MethodPost, "/settings/save", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rr := httptest.NewRecorder()
+
+	srv.handleSaveSettings(rr, req)
+
+	if rr.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d", rr.Code)
+	}
+
+	saved, err := db.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings failed: %v", err)
+	}
+
+	if !saved.AutoUpdateEnabled {
+		t.Errorf("Expected AutoUpdateEnabled to be true")
+	}
+	if saved.AutoUpdateSchedule != "weekly" {
+		t.Errorf("Expected AutoUpdateSchedule 'weekly', got %s", saved.AutoUpdateSchedule)
+	}
+	if saved.AutoUpdateTime != "04:30" {
+		t.Errorf("Expected AutoUpdateTime '04:30', got %s", saved.AutoUpdateTime)
+	}
+	if saved.AutoUpdateWeekday != 3 {
+		t.Errorf("Expected AutoUpdateWeekday 3, got %d", saved.AutoUpdateWeekday)
+	}
+	if saved.AutoUpdateDay != 15 {
+		t.Errorf("Expected AutoUpdateDay 15, got %d", saved.AutoUpdateDay)
+	}
+}
+
+func TestApplyUpdateEndpointSecurityAndExecution(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	// 1. Unauthenticated / Cross-site check
+	reqCSRF := httptest.NewRequest(http.MethodPost, "/api/update/apply", nil)
+	reqCSRF.Header.Set("Origin", "http://evil-attacker.com")
+	rrCSRF := httptest.NewRecorder()
+
+	handler := srv.csrfProtect(srv.handleApplyUpdate)
+	handler(rrCSRF, reqCSRF)
+
+	if rrCSRF.Code != http.StatusForbidden {
+		t.Errorf("Expected CSRF rejection (403 Forbidden), got %d", rrCSRF.Code)
+	}
+
+	// 2. Authorized call with missing/invalid target
+	reqValid := httptest.NewRequest(http.MethodPost, "/api/update/apply", strings.NewReader("version=99.99.99"))
+	reqValid.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqValid.Header.Set("Origin", "http://example.com")
+	reqValid.Host = "example.com"
+	rrValid := httptest.NewRecorder()
+
+	handler(rrValid, reqValid)
+
+	// Since 99.99.99 does not exist on GitHub, it should return 500 with a clean JSON error response
+	if rrValid.Code != http.StatusInternalServerError {
+		t.Errorf("Expected 500 error for non-existent release, got %d", rrValid.Code)
+	}
+
+	var jsonResp map[string]interface{}
+	if err := json.Unmarshal(rrValid.Body.Bytes(), &jsonResp); err != nil {
+		t.Fatalf("Failed to parse JSON response: %v", err)
+	}
+	if jsonResp["success"] != false || jsonResp["error"] == nil {
+		t.Errorf("Expected {success: false, error: ...}, got: %v", jsonResp)
 	}
 }
 

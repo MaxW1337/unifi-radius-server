@@ -81,6 +81,23 @@ func (db *DB) GetSettings() (*models.Settings, error) {
 		remoteBackupRetention = 7
 	}
 
+	autoUpdateSchedule := sMap["auto_update_schedule"]
+	if autoUpdateSchedule == "" {
+		autoUpdateSchedule = "weekly"
+	}
+	autoUpdateTime := sMap["auto_update_time"]
+	if autoUpdateTime == "" {
+		autoUpdateTime = "03:00"
+	}
+	autoUpdateWeekday, _ := strconv.Atoi(sMap["auto_update_weekday"])
+	if autoUpdateWeekday < 1 || autoUpdateWeekday > 7 {
+		autoUpdateWeekday = 1 // Monday
+	}
+	autoUpdateDay, _ := strconv.Atoi(sMap["auto_update_day"])
+	if autoUpdateDay < 1 || autoUpdateDay > 31 {
+		autoUpdateDay = 1
+	}
+
 	return &models.Settings{
 		DefaultAllowVLAN:   defVLAN,
 		UnknownMABPolicy:   policy,
@@ -120,6 +137,12 @@ func (db *DB) GetSettings() (*models.Settings, error) {
 		RemoteBackupPassword:  sMap["remote_backup_password"],
 		RemoteBackupSchedule:  remoteBackupSchedule,
 		RemoteBackupRetention: remoteBackupRetention,
+
+		AutoUpdateEnabled:  sMap["auto_update_enabled"] == "true",
+		AutoUpdateSchedule: autoUpdateSchedule,
+		AutoUpdateTime:     autoUpdateTime,
+		AutoUpdateWeekday:  autoUpdateWeekday,
+		AutoUpdateDay:      autoUpdateDay,
 	}, nil
 }
 
@@ -157,6 +180,12 @@ func (db *DB) UpdateSettings(s *models.Settings) error {
 		"remote_backup_username":  s.RemoteBackupUsername,
 		"remote_backup_schedule":  s.RemoteBackupSchedule,
 		"remote_backup_retention": strconv.Itoa(s.RemoteBackupRetention),
+
+		"auto_update_enabled":  strconv.FormatBool(s.AutoUpdateEnabled),
+		"auto_update_schedule": s.AutoUpdateSchedule,
+		"auto_update_time":     s.AutoUpdateTime,
+		"auto_update_weekday":  strconv.Itoa(s.AutoUpdateWeekday),
+		"auto_update_day":      strconv.Itoa(s.AutoUpdateDay),
 	}
 
 	if s.RemoteBackupPassword != "" {

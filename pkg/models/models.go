@@ -156,5 +156,12 @@ type Settings struct {
 	RemoteBackupPassword  string `json:"-"`
 	RemoteBackupSchedule  string `json:"remote_backup_schedule"` // '03:00' (daily), or 'disabled'
 	RemoteBackupRetention int    `json:"remote_backup_retention"` // keep last N backups
+
+	// Automated Self-Update Configuration
+	AutoUpdateEnabled  bool   `json:"auto_update_enabled"`
+	AutoUpdateSchedule string `json:"auto_update_schedule"` // 'daily', 'weekly', 'monthly'
+	AutoUpdateTime     string `json:"auto_update_time"`     // "03:00"
+	AutoUpdateWeekday  int    `json:"auto_update_weekday"`  // 1 = Monday .. 7 = Sunday
+	AutoUpdateDay      int    `json:"auto_update_day"`      // 1 .. 31
 }
 

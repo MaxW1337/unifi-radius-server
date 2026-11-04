@@ -195,6 +195,60 @@
         <div id="update-settings-result" hx-get="/api/update/check?view=settings" hx-trigger="load" hx-swap="innerHTML">
           <div style="color: var(--text-dim); font-size: 12px;">{{tr .Lang "settings.checking_updates"}}</div>
         </div>
+
+        <!-- Automated Background Updates -->
+        <div style="margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 10px;">
+            <div>
+              <h4 style="margin: 0; font-size: 14px; font-weight: 600;">{{tr .Lang "settings.updates_autoupdate_title"}}</h4>
+              <p style="font-size: 12px; color: var(--text-muted); margin: 2px 0 0 0;">{{tr .Lang "settings.updates_autoupdate_subtitle"}}</p>
+            </div>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; font-weight: 600;">
+              <input type="checkbox" name="auto_update_enabled" value="1" id="auto_update_enabled_cb" {{if .Settings.AutoUpdateEnabled}}checked{{end}} onchange="toggleAutoUpdateFields()" style="width: 18px; height: 18px; accent-color: var(--unifi-blue);">
+              <span>{{tr .Lang "settings.updates_autoupdate_enable"}}</span>
+            </label>
+          </div>
+
+          <div id="autoUpdateConfigFields" style="display: {{if .Settings.AutoUpdateEnabled}}block{{else}}none{{end}}; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-top: 12px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.updates_autoupdate_schedule"}}</label>
+                <select name="auto_update_schedule" id="autoUpdateScheduleSelect" class="form-control" style="font-size: 12px;" onchange="toggleAutoUpdateScheduleUI()">
+                  <option value="daily" {{if eq .Settings.AutoUpdateSchedule "daily"}}selected{{end}}>{{tr .Lang "settings.updates_schedule_daily"}}</option>
+                  <option value="weekly" {{if eq .Settings.AutoUpdateSchedule "weekly"}}selected{{end}}>{{tr .Lang "settings.updates_schedule_weekly"}}</option>
+                  <option value="monthly" {{if eq .Settings.AutoUpdateSchedule "monthly"}}selected{{end}}>{{tr .Lang "settings.updates_schedule_monthly"}}</option>
+                </select>
+              </div>
+
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.updates_autoupdate_time"}}</label>
+                <input type="time" name="auto_update_time" value="{{if .Settings.AutoUpdateTime}}{{.Settings.AutoUpdateTime}}{{else}}03:00{{end}}" class="form-control" style="font-size: 12px;">
+              </div>
+
+              <div class="form-group" id="group-autoupdate-weekday" style="margin-bottom: 0; display: {{if eq .Settings.AutoUpdateSchedule "weekly"}}block{{else}}none{{end}};">
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.updates_autoupdate_weekday"}}</label>
+                <select name="auto_update_weekday" class="form-control" style="font-size: 12px;">
+                  <option value="1" {{if eq .Settings.AutoUpdateWeekday 1}}selected{{end}}>{{tr .Lang "settings.weekday_1"}}</option>
+                  <option value="2" {{if eq .Settings.AutoUpdateWeekday 2}}selected{{end}}>{{tr .Lang "settings.weekday_2"}}</option>
+                  <option value="3" {{if eq .Settings.AutoUpdateWeekday 3}}selected{{end}}>{{tr .Lang "settings.weekday_3"}}</option>
+                  <option value="4" {{if eq .Settings.AutoUpdateWeekday 4}}selected{{end}}>{{tr .Lang "settings.weekday_4"}}</option>
+                  <option value="5" {{if eq .Settings.AutoUpdateWeekday 5}}selected{{end}}>{{tr .Lang "settings.weekday_5"}}</option>
+                  <option value="6" {{if eq .Settings.AutoUpdateWeekday 6}}selected{{end}}>{{tr .Lang "settings.weekday_6"}}</option>
+                  <option value="7" {{if eq .Settings.AutoUpdateWeekday 7}}selected{{end}}>{{tr .Lang "settings.weekday_7"}}</option>
+                </select>
+              </div>
+
+              <div class="form-group" id="group-autoupdate-day" style="margin-bottom: 0; display: {{if eq .Settings.AutoUpdateSchedule "monthly"}}block{{else}}none{{end}};">
+                <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.updates_autoupdate_day"}}</label>
+                <input type="number" name="auto_update_day" value="{{if gt .Settings.AutoUpdateDay 0}}{{.Settings.AutoUpdateDay}}{{else}}1{{end}}" min="1" max="31" class="form-control" style="font-size: 12px;">
+              </div>
+            </div>
+
+            <div style="font-size: 11px; color: var(--text-dim); margin-top: 12px; line-height: 1.4;">
+              {{tr .Lang "settings.updates_autoupdate_hint"}}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -598,7 +652,29 @@ function updateRemoteBackupUI() {
     credFields.style.display = 'none';
   }
 }
-document.addEventListener('DOMContentLoaded', updateRemoteBackupUI);
+document.addEventListener('DOMContentLoaded', function() {
+  updateRemoteBackupUI();
+  toggleAutoUpdateFields();
+  toggleAutoUpdateScheduleUI();
+});
+
+function toggleAutoUpdateFields() {
+  const cb = document.getElementById('auto_update_enabled_cb');
+  const fields = document.getElementById('autoUpdateConfigFields');
+  if (cb && fields) {
+    fields.style.display = cb.checked ? 'block' : 'none';
+  }
+}
+
+function toggleAutoUpdateScheduleUI() {
+  const select = document.getElementById('autoUpdateScheduleSelect');
+  const groupWday = document.getElementById('group-autoupdate-weekday');
+  const groupDay = document.getElementById('group-autoupdate-day');
+  if (!select) return;
+  const val = select.value;
+  if (groupWday) groupWday.style.display = val === 'weekly' ? 'block' : 'none';
+  if (groupDay) groupDay.style.display = val === 'monthly' ? 'block' : 'none';
+}
 </script>
 {{end}}
 

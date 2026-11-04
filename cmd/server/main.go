@@ -14,6 +14,8 @@ import (
 
 	"github.com/mwittenburg/unifi-radius-server/pkg/database"
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
+	"github.com/mwittenburg/unifi-radius-server/pkg/models"
+	"github.com/mwittenburg/unifi-radius-server/pkg/notify"
 	"github.com/mwittenburg/unifi-radius-server/pkg/radius"
 	"github.com/mwittenburg/unifi-radius-server/pkg/unifi"
 	"github.com/mwittenburg/unifi-radius-server/pkg/web"
@@ -145,6 +147,26 @@ func main() {
 	}
 	if backupSvc != nil {
 		go backupSvc.Start(ctx)
+	}
+	if updaterSvc := webSrv.UpdaterService(); updaterSvc != nil {
+		go updaterSvc.StartAutoScheduler(ctx, func() (*models.Settings, error) {
+			return db.GetSettings()
+		}, func(newVersion string) {
+			bus.PublishLog(eventbus.LogEvent{
+				Timestamp: time.Now().Format("15:04:05"),
+				Level:     eventbus.LogLevelInfo,
+				Source:    "AUTO-UPDATE",
+				Message:   fmt.Sprintf("UniFi RADIUS Server wurde planmäßig auf Version v%s aktualisiert.", newVersion),
+			})
+			if notifySvc != nil {
+				notifySvc.Dispatch(context.Background(), notify.NotificationEvent{
+					Type:      "system_update",
+					Title:     "⚡ Automatisches Software-Update installiert",
+					Message:   fmt.Sprintf("UniFi RADIUS Server wurde planmäßig im Wartungsfenster auf Version v%s aktualisiert und neu gestartet.", newVersion),
+					Timestamp: time.Now(),
+				})
+			}
+		})
 	}
 
 	go func() {

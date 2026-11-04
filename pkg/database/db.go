@@ -171,6 +171,11 @@ func (db *DB) seedDefaults() error {
 		"log_retention_days":   "30",
 		"max_log_entries":      "10000",
 		"ssl_enabled":          "false",
+		"auto_update_enabled":  "false",
+		"auto_update_schedule": "weekly",
+		"auto_update_time":     "03:00",
+		"auto_update_weekday":  "1",
+		"auto_update_day":      "1",
 	}
 
 	for k, v := range defaults {
