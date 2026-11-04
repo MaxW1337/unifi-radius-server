@@ -150,7 +150,7 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 		bus = eventbus.DefaultBus
 	}
 
-	ver := "1.0.4"
+	ver := "1.0.5"
 	if len(version) > 0 && version[0] != "" {
 		ver = strings.TrimPrefix(version[0], "v")
 	}
