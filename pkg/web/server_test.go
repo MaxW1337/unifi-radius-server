@@ -124,6 +124,37 @@ func TestStaticAssetsEmbedded(t *testing.T) {
 	if rrHTMX.Code != http.StatusOK {
 		t.Fatalf("Expected 200 OK for /static/htmx.min.js, got %d", rrHTMX.Code)
 	}
+
+	// Verify favicon routes
+	reqFavicon := httptest.NewRequest(http.MethodGet, "/favicon.ico", nil)
+	rrFavicon := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(rrFavicon, reqFavicon)
+	if rrFavicon.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /favicon.ico, got %d", rrFavicon.Code)
+	}
+	if ct := rrFavicon.Header().Get("Content-Type"); ct != "image/x-icon" {
+		t.Errorf("Expected Content-Type image/x-icon for /favicon.ico, got %s", ct)
+	}
+
+	reqSVG := httptest.NewRequest(http.MethodGet, "/static/favicon.svg", nil)
+	rrSVG := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(rrSVG, reqSVG)
+	if rrSVG.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /static/favicon.svg, got %d", rrSVG.Code)
+	}
+	if !strings.Contains(rrSVG.Body.String(), "<svg") {
+		t.Error("favicon.svg does not contain SVG root element")
+	}
+
+	reqTouch := httptest.NewRequest(http.MethodGet, "/apple-touch-icon.png", nil)
+	rrTouch := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(rrTouch, reqTouch)
+	if rrTouch.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK for /apple-touch-icon.png, got %d", rrTouch.Code)
+	}
+	if ct := rrTouch.Header().Get("Content-Type"); ct != "image/png" {
+		t.Errorf("Expected Content-Type image/png for /apple-touch-icon.png, got %s", ct)
+	}
 }
 
 func TestTabRenderingDistinctContent(t *testing.T) {
