@@ -178,6 +178,12 @@ func MigrateBuiltinRadius(client *Client, db *database.DB, disableBuiltin, updat
 					}
 				}
 			}
+
+			// Automatically update Global Switch 802.1X Control (Credential Source: RADIUS Profile, Profile: UDM-Internal-RADIUS, Fallback: LAN)
+			fallbackID, _ := client.GetDefaultLANNetworkID()
+			if sErr := client.UpdateGlobalSwitch8021X(profile.ID, fallbackID); sErr == nil {
+				report.Messages = append(report.Messages, fmt.Sprintf("UniFi 802.1X Switch-Control erfolgreich auf RADIUS-Profil '%s' (Fallback: LAN) umgestellt.", profile.Name))
+			}
 		}
 	}
 

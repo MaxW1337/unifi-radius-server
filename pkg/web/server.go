@@ -1435,6 +1435,15 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	switchDot1xInfo := ""
+	if gs, gsErr := client.GetGlobalSwitchSetting(); gsErr == nil {
+		radProfID := fmt.Sprintf("%v", gs["radiusprofile_id"])
+		dot1xEnabled, _ := gs["dot1x_portctrl_enabled"].(bool)
+		if dot1xEnabled && radProfID != "" && radProfID != "<nil>" {
+			switchDot1xInfo = `<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Wired Switch 802.1X Control: <strong>Aktiviert (Profil: UDM-Internal-RADIUS, Fallback: LAN)</strong></div>`
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html")
 	if enabled {
 		secretMasked := "***"
@@ -1473,6 +1482,7 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 			</div>
 			%s
 			%s
+			%s
 			<div style="font-size: 11px; color: var(--text-dim); margin-top: 6px;">
 				%s
 			</div>
@@ -1484,7 +1494,7 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 				<span style="font-size: 10px; color: var(--text-dim);">Zuletzt geprüft: %s Uhr</span>
 			</div>
 		</div>
-		`, count, template.HTMLEscapeString(secretMasked), sqliteInfo, wlanInfo, tipText, nowStr)
+		`, count, template.HTMLEscapeString(secretMasked), sqliteInfo, wlanInfo, switchDot1xInfo, tipText, nowStr)
 		_, _ = w.Write([]byte(html))
 	} else {
 		wlanInfo := ""
@@ -1506,6 +1516,7 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 				Lokale SQLite-Datenbank: <strong>%d</strong> Clients aktiv (davon <strong>%d</strong> aus UniFi migriert) &bull; UniFi-Accounts: %d
 			</div>
 			%s
+			%s
 			<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px;">
 				<button type="button" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="toggleBuiltinRadius(true)">
 					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
@@ -1514,7 +1525,7 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 				<span style="font-size: 10px; color: var(--text-dim);">Zuletzt geprüft: %s Uhr</span>
 			</div>
 		</div>
-		`, totalClients, migratedClients, count, wlanInfo, nowStr)
+		`, totalClients, migratedClients, count, wlanInfo, switchDot1xInfo, nowStr)
 		_, _ = w.Write([]byte(html))
 	}
 }

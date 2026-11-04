@@ -1007,3 +1007,118 @@ func (c *Client) UpdateWLANRadiusProfile(wlanID, profileID string) error {
 	return fmt.Errorf("failed to update WLAN radius profile in UniFi")
 }
 
+// GetDefaultLANNetworkID finds the internal UniFi _id of the default corporate LAN network.
+func (c *Client) GetDefaultLANNetworkID() (string, error) {
+	endpoints := []string{
+		fmt.Sprintf("/proxy/network/api/s/%s/rest/networkconf", c.cfg.Site),
+		fmt.Sprintf("/api/s/%s/rest/networkconf", c.cfg.Site),
+	}
+
+	for _, ep := range endpoints {
+		resp, err := c.doRequest(http.MethodGet, ep, nil)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		var apiResp unifiResponse
+		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+			continue
+		}
+
+		for _, raw := range apiResp.Data {
+			var netItem struct {
+				ID           string `json:"_id"`
+				Name         string `json:"name"`
+				Purpose      string `json:"purpose"`
+				AttrHiddenID string `json:"attr_hidden_id"`
+				IsDefault    bool   `json:"is_default"`
+			}
+			if err := json.Unmarshal(raw, &netItem); err == nil {
+				if netItem.Purpose == "corporate" && (netItem.AttrHiddenID == "LAN" || strings.EqualFold(netItem.Name, "LAN") || netItem.IsDefault) {
+					return netItem.ID, nil
+				}
+			}
+		}
+	}
+
+	return "", fmt.Errorf("default LAN network not found in UniFi")
+}
+
+// GetGlobalSwitchSetting retrieves the global switch settings from UniFi Network.
+func (c *Client) GetGlobalSwitchSetting() (map[string]interface{}, error) {
+	endpoints := []string{
+		fmt.Sprintf("/proxy/network/api/s/%s/get/setting/global_switch", c.cfg.Site),
+		fmt.Sprintf("/api/s/%s/get/setting/global_switch", c.cfg.Site),
+	}
+
+	for _, ep := range endpoints {
+		resp, err := c.doRequest(http.MethodGet, ep, nil)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		var apiResp unifiResponse
+		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+			continue
+		}
+
+		if len(apiResp.Data) > 0 {
+			var m map[string]interface{}
+			if err := json.Unmarshal(apiResp.Data[0], &m); err == nil {
+				return m, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("failed to retrieve global_switch setting from UniFi")
+}
+
+// UpdateGlobalSwitch8021X updates 802.1X control and RADIUS profile on the global switch configuration.
+func (c *Client) UpdateGlobalSwitch8021X(radiusProfileID, fallbackNetworkID string) error {
+	current, err := c.GetGlobalSwitchSetting()
+	if err != nil {
+		return err
+	}
+
+	current["dot1x_portctrl_enabled"] = true
+	current["radiusprofile_id"] = radiusProfileID
+	if fallbackNetworkID != "" {
+		current["dot1x_fallback_networkconf_id"] = fallbackNetworkID
+	}
+
+	bodyBytes, err := json.Marshal(current)
+	if err != nil {
+		return err
+	}
+
+	id := fmt.Sprintf("%v", current["_id"])
+	endpointsPut := []string{
+		fmt.Sprintf("/proxy/network/api/s/%s/rest/setting/global_switch/%s", c.cfg.Site, id),
+		fmt.Sprintf("/api/s/%s/rest/setting/global_switch/%s", c.cfg.Site, id),
+	}
+
+	for _, ep := range endpointsPut {
+		resp, err := c.doRequest(http.MethodPut, ep, bytes.NewReader(bodyBytes))
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("failed to update global_switch 802.1X setting in UniFi")
+}
+

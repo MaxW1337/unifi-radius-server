@@ -84,10 +84,17 @@ dpkg -i unifi-radius_*_arm64.deb
      * **Password / Shared Secret**: Das in den Server-Einstellungen hinterlegte *Global Shared Secret*.
    * Speichern.
 
-4. **Port auf Switch aktivieren (MAB)**:
+4. **Wired Switch 802.1X Control (Globale Switch-Einstellungen)**:
+   * Gehe in UniFi Network zu **Settings** -> **Networks** -> **Global Switch Settings**.
+   * Unter **802.1X Control**:
+     * **Credential Source**: Von *Local* auf **RADIUS Profile** umstellen.
+     * **RADIUS Profile**: `UDM-Internal-RADIUS` auswählen.
+     * **Fallback Network**: `LAN` (oder dein Standard-Netzwerk).
+   * *(Hinweis: Der integrierte Migrations-Assistent übernimmt diese Umstellung automatisch über die UniFi API).*
+
+5. **Port auf Switch aktivieren (MAB)**:
    * Wähle in UniFi Network einen Switch und den gewünschten Port aus.
-   * Setze **Port Isolation / 802.1X Control** auf **MAC-based (MAB)**.
-   * Wähle das erstellte RADIUS-Profil aus.
+   * Setze **802.1X Control** auf **MAC-based (MAB)**.
    * Sobald ein Gerät angeschlossen wird, erscheint es im **Live Monitor** des UniFi RADIUS Servers!
 
 ---
