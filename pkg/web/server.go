@@ -1748,12 +1748,19 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		vlanStr = fmt.Sprintf("%d", *a.VLANID)
 	}
 
+	latencyClass := "latency-fast"
+	if a.LatencyMS >= 50.0 {
+		latencyClass = "latency-slow"
+	} else if a.LatencyMS >= 15.0 {
+		latencyClass = "latency-normal"
+	}
+
 	// Uses hx-swap-oob="afterbegin" on #live-feed-rows
 	return fmt.Sprintf(`
 	<tr id="live-feed-rows" hx-swap-oob="afterbegin" data-status="%s" data-ident="%s" data-vlan="%s">
 		<td style="color: var(--text-dim); font-size: 12px;"><time class="local-time" datetime="%s" data-format="time">%s</time></td>
 		<td>%s</td>
-		<td><span class="code-pill">%s</span></td>
+		<td><span class="code-pill copyable" onclick="copyToClipboard('%s', this)" title="Kopieren">%s</span></td>
 		<td>%s</td>
 		<td>
 			<div><strong>%s</strong></div>
@@ -1763,7 +1770,7 @@ func formatAuthRowHTML(a models.AuthLog) string {
 			<div>%s</div>
 			<div style="font-size: 11px; color: var(--text-dim);">Port %s</div>
 		</td>
-		<td style="color: var(--text-muted); font-size: 12px;">%.1f ms</td>
+		<td style="font-size: 12px;"><span class="latency-pill %s">%.1f ms</span></td>
 	</tr>
 	`,
 		template.HTMLEscapeString(a.Status),
@@ -1773,11 +1780,13 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		template.HTMLEscapeString(tsFallback),
 		statusBadge,
 		template.HTMLEscapeString(ident),
+		template.HTMLEscapeString(ident),
 		vlanBadge,
 		template.HTMLEscapeString(enrichedName),
 		template.HTMLEscapeString(a.EnrichedVendor),
 		template.HTMLEscapeString(a.NASIP),
 		template.HTMLEscapeString(a.NASPort),
+		template.HTMLEscapeString(latencyClass),
 		a.LatencyMS,
 	)
 }

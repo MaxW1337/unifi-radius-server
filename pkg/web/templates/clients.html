@@ -1,9 +1,12 @@
 {{define "content"}}
 <div class="panel">
   <div class="panel-header">
-    <div>
-      <h3 class="panel-title">{{tr .Lang "clients.title"}}</h3>
-      <p class="panel-subtitle">{{tr .Lang "clients.subtitle"}}</p>
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <div>
+        <h3 class="panel-title">{{tr .Lang "clients.title"}}</h3>
+        <p class="panel-subtitle">{{tr .Lang "clients.subtitle"}}</p>
+      </div>
+      <span class="badge dim" style="font-size: 11px;">{{len .Clients}} Einträge</span>
     </div>
     <div style="display: flex; gap: 10px; align-items: center;">
       <form method="GET" action="/clients" 
@@ -63,10 +66,10 @@
           <tr>
             <td>
               {{if .MACAddress}}
-                <span class="code-pill">{{.MACAddress}}</span>
+                <span class="code-pill copyable" onclick="copyToClipboard('{{.MACAddress}}', this)" title="Klicken zum Kopieren">{{.MACAddress}}</span>
                 <span class="badge dim" style="margin-left: 4px;">MAB</span>
               {{else if .Username}}
-                <span class="code-pill">👤 {{.Username}}</span>
+                <span class="code-pill copyable" onclick="copyToClipboard('{{.Username}}', this)" title="Klicken zum Kopieren">👤 {{.Username}}</span>
                 {{if eq .AuthType "eap-tls"}}
                   <span class="badge dim" style="margin-left: 4px;">TLS</span>
                 {{else}}
@@ -403,6 +406,23 @@ function triggerModalReconnect() {
     })
     .catch(err => console.error(err));
 }
+
+function formatMAC(e) {
+  let val = e.target.value.replace(/[^a-fA-F0-9]/g, '').toUpperCase();
+  if (val.length > 12) val = val.slice(0, 12);
+  const parts = [];
+  for (let i = 0; i < val.length; i += 2) {
+    parts.push(val.slice(i, i + 2));
+  }
+  e.target.value = parts.join(':');
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  const addMac = document.getElementById('add-input-mac');
+  if (addMac) addMac.addEventListener('input', formatMAC);
+  const editMac = document.getElementById('edit-mac');
+  if (editMac) editMac.addEventListener('input', formatMAC);
+});
 </script>
 {{end}}
 

@@ -67,10 +67,16 @@
     </div>
   </aside>
 
+  <!-- Sidebar Backdrop for Mobile -->
+  <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleMobileSidebar(false)"></div>
+
   <!-- Main Content Wrapper -->
   <div class="main-wrapper">
     <header class="topbar">
-      <div class="topbar-title">
+      <div class="topbar-title" style="display: flex; align-items: center;">
+        <button type="button" class="mobile-nav-toggle" onclick="toggleMobileSidebar()" aria-label="Menü öffnen" title="Menü">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+        </button>
         <h2>{{.PageTitle}}</h2>
       </div>
       <div class="topbar-actions">
@@ -138,6 +144,34 @@
     }
   });
   timeObserver.observe(document.body, { childList: true, subtree: true });
+
+  function toggleMobileSidebar(force) {
+    const sidebar = document.querySelector('.sidebar');
+    const backdrop = document.getElementById('sidebarBackdrop');
+    if (!sidebar || !backdrop) return;
+    const shouldOpen = force !== undefined ? force : !sidebar.classList.contains('open');
+    sidebar.classList.toggle('open', shouldOpen);
+    backdrop.classList.toggle('open', shouldOpen);
+  }
+
+  function copyToClipboard(text, triggerEl, label = 'In die Zwischenablage kopiert!') {
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(() => {
+      showToast(label);
+      if (triggerEl) {
+        triggerEl.classList.add('copied');
+        setTimeout(() => triggerEl.classList.remove('copied'), 1500);
+      }
+    });
+  }
+
+  // Close modals and mobile drawer on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      toggleMobileSidebar(false);
+      document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+    }
+  });
 
   function showToast(message, isError) {
     const container = document.getElementById('toast-container');

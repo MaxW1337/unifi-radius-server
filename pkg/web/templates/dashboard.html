@@ -20,7 +20,7 @@
 
 <!-- Top Stats Grid -->
 <div class="stats-grid">
-  <div class="stat-card">
+  <a href="/clients" class="stat-card interactive" title="Alle Clients verwalten">
     <div class="stat-icon blue">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle></svg>
     </div>
@@ -28,9 +28,9 @@
       <div class="stat-value">{{.TotalClients}}</div>
       <div class="stat-label">{{tr .Lang "dash.total_clients"}}</div>
     </div>
-  </div>
+  </a>
 
-  <div class="stat-card">
+  <a href="/clients?status=active" class="stat-card interactive" title="Aktive Clients filtern">
     <div class="stat-icon green">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
     </div>
@@ -38,9 +38,9 @@
       <div class="stat-value">{{.ActiveClients}}</div>
       <div class="stat-label">{{tr .Lang "dash.active_clients"}}</div>
     </div>
-  </div>
+  </a>
 
-  <div class="stat-card">
+  <a href="/clients?status=pending" class="stat-card interactive" title="Ausstehende / Pending Clients freigeben">
     <div class="stat-icon yellow">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
     </div>
@@ -48,9 +48,9 @@
       <div class="stat-value">{{.PendingClients}}</div>
       <div class="stat-label">{{tr .Lang "dash.pending_clients"}}</div>
     </div>
-  </div>
+  </a>
 
-  <div class="stat-card">
+  <a href="/clients" class="stat-card interactive" title="UniFi VLAN-Übersicht">
     <div class="stat-icon blue">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
     </div>
@@ -58,7 +58,7 @@
       <div class="stat-value">{{.TotalVLANs}}</div>
       <div class="stat-label">{{tr .Lang "dash.unifi_vlans"}}</div>
     </div>
-  </div>
+  </a>
 </div>
 
 <!-- Real-Time RADIUS Activity Feed -->
@@ -116,7 +116,7 @@
             {{end}}
           </td>
           <td>
-            <span class="code-pill">{{if .ClientMAC}}{{.ClientMAC}}{{else}}{{.Username}}{{end}}</span>
+            <span class="code-pill copyable" onclick="copyToClipboard('{{if .ClientMAC}}{{.ClientMAC}}{{else}}{{.Username}}{{end}}', this)" title="Klicken zum Kopieren">{{if .ClientMAC}}{{.ClientMAC}}{{else}}{{.Username}}{{end}}</span>
           </td>
           <td>
             {{if .VLANID}}
@@ -133,7 +133,7 @@
             <div>{{.NASIP}}</div>
             <div style="font-size: 11px; color: var(--text-dim);">Port {{.NASPort}}</div>
           </td>
-          <td style="color: var(--text-muted); font-size: 12px;">{{printf "%.1f" .LatencyMS}} ms</td>
+          <td style="font-size: 12px;"><span class="latency-pill {{if lt .LatencyMS 15.0}}latency-fast{{else if lt .LatencyMS 50.0}}latency-normal{{else}}latency-slow{{end}}">{{printf "%.1f" .LatencyMS}} ms</span></td>
         </tr>
         {{else}}
         <tr id="empty-feed-placeholder">

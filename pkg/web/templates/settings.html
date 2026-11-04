@@ -5,9 +5,21 @@
 #btn-check-mig-status.htmx-request .spinner { display: inline-block !important; }
 </style>
 <div style="max-width: 800px;">
+  <!-- Section Quick Navigation -->
+  <div class="settings-nav-tabs">
+    <a href="#sec-unifi" class="settings-nav-pill active">UniFi</a>
+    <a href="#sec-migration" class="settings-nav-pill">Migration</a>
+    <a href="#sec-radius" class="settings-nav-pill">RADIUS & MAB</a>
+    <a href="#sec-system" class="settings-nav-pill">Web & Logs</a>
+    <a href="#sec-updates" class="settings-nav-pill">Updates</a>
+    <a href="#sec-notify" class="settings-nav-pill">Benachrichtigungen</a>
+    <a href="#sec-remote-backup" class="settings-nav-pill">Remote Backup</a>
+    <a href="#sec-backup" class="settings-nav-pill">Backup & Restore</a>
+  </div>
+
   <form method="POST" action="/settings/save">
     <!-- UniFi Integration Settings -->
-    <div class="panel">
+    <div class="panel" id="sec-unifi">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">{{tr .Lang "settings.unifi_title"}}</h3>
@@ -36,7 +48,12 @@
 
         <div id="apiKeyGroup" class="form-group" style="{{if eq .Settings.UniFiAuthMode "credentials"}}display: none;{{end}}">
           <label class="form-label">{{tr .Lang "settings.label_apikey"}}</label>
-          <input type="password" name="unifi_api_key" value="{{.Settings.UniFiAPIKey}}" placeholder="{{tr .Lang "settings.apikey_ph"}}" class="form-control">
+          <div class="password-wrapper">
+            <input type="password" name="unifi_api_key" value="{{.Settings.UniFiAPIKey}}" placeholder="{{tr .Lang "settings.apikey_ph"}}" class="form-control">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="API-Key anzeigen/verbergen">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
 
         <div id="credentialsGroup" style="{{if eq .Settings.UniFiAuthMode "apikey"}}display: none;{{end}}">
@@ -46,7 +63,12 @@
           </div>
           <div class="form-group">
             <label class="form-label">{{tr .Lang "settings.label_pass"}}</label>
-            <input type="password" name="unifi_password" placeholder="{{tr .Lang "settings.pass_ph"}}" class="form-control">
+            <div class="password-wrapper">
+              <input type="password" name="unifi_password" placeholder="{{tr .Lang "settings.pass_ph"}}" class="form-control">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="Passwort anzeigen/verbergen">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -59,7 +81,7 @@
     </div>
 
     <!-- Built-in RADIUS Migration Assistant -->
-    <div class="panel">
+    <div class="panel" id="sec-migration">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">{{tr .Lang "settings.mig_title"}}</h3>
@@ -108,7 +130,7 @@
     </div>
 
     <!-- RADIUS Protocol Settings -->
-    <div class="panel">
+    <div class="panel" id="sec-radius">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">{{tr .Lang "settings.radius_title"}}</h3>
@@ -163,7 +185,7 @@
     </div>
 
     <!-- Web UI & Database Retention -->
-    <div class="panel">
+    <div class="panel" id="sec-system">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">{{tr .Lang "settings.sec_title"}}</h3>
@@ -179,7 +201,12 @@
 
         <div class="form-group">
           <label class="form-label">{{tr .Lang "settings.label_admin_pass"}}</label>
-          <input type="password" name="web_admin_password" placeholder="{{tr .Lang "settings.admin_pass_ph"}}" class="form-control">
+          <div class="password-wrapper">
+            <input type="password" name="web_admin_password" placeholder="{{tr .Lang "settings.admin_pass_ph"}}" class="form-control">
+            <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="Passwort anzeigen/verbergen">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
         </div>
 
         <div class="form-group">
@@ -190,7 +217,7 @@
     </div>
 
     <!-- System & Software-Updates Panel -->
-    <div class="panel">
+    <div class="panel" id="sec-updates">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">{{tr .Lang "settings.updates_title"}}</h3>
@@ -271,7 +298,7 @@
     </div>
 
     <!-- Messenger, Bots & Push-Dienste Panel -->
-    <div class="panel" style="margin-top: 24px;">
+    <div class="panel" id="sec-notify" style="margin-top: 24px;">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">{{tr .Lang "settings.notify_title"}}</h3>
@@ -328,7 +355,12 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
               <div>
                 <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_tg_token"}}</label>
-                <input type="password" name="telegram_bot_token" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" class="form-control" style="font-size: 12px;">
+                <div class="password-wrapper">
+                  <input type="password" name="telegram_bot_token" placeholder="123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ" class="form-control" style="font-size: 12px;">
+                  <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="Token anzeigen/verbergen">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
               </div>
               <div>
                 <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_tg_chats"}}</label>
@@ -360,7 +392,12 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
               <div>
                 <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_dc_token"}}</label>
-                <input type="password" name="discord_bot_token" placeholder="MTIzNDU2...BotToken" class="form-control" style="font-size: 12px;">
+                <div class="password-wrapper">
+                  <input type="password" name="discord_bot_token" placeholder="MTIzNDU2...BotToken" class="form-control" style="font-size: 12px;">
+                  <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="Token anzeigen/verbergen">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
               </div>
               <div>
                 <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_dc_channel"}}</label>
@@ -392,11 +429,21 @@
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 12px;">
               <div>
                 <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_po_token"}}</label>
-                <input type="password" name="pushover_api_token" placeholder="a1b2c3d4e5f6..." class="form-control" style="font-size: 12px;">
+                <div class="password-wrapper">
+                  <input type="password" name="pushover_api_token" placeholder="a1b2c3d4e5f6..." class="form-control" style="font-size: 12px;">
+                  <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="Token anzeigen/verbergen">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
               </div>
               <div>
                 <label class="form-label" style="font-size: 12px;">{{tr .Lang "settings.label_po_user"}}</label>
-                <input type="password" name="pushover_user_key" placeholder="u1v2w3x4y5z6..." class="form-control" style="font-size: 12px;">
+                <div class="password-wrapper">
+                  <input type="password" name="pushover_user_key" placeholder="u1v2w3x4y5z6..." class="form-control" style="font-size: 12px;">
+                  <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="Key anzeigen/verbergen">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                </div>
               </div>
             </div>
             <div style="margin-top: 12px; display: flex; align-items: center; gap: 12px;">
@@ -437,7 +484,7 @@
     </div>
 
     <!-- Remote Backup (WebDAV, S3, SMB/Local) Panel -->
-    <div class="panel" style="margin-top: 24px;">
+    <div class="panel" id="sec-remote-backup" style="margin-top: 24px;">
       <div class="panel-header">
         <div>
           <h3 class="panel-title">{{tr .Lang "settings.remote_backup_title"}}</h3>
@@ -489,7 +536,12 @@
           </div>
           <div class="form-group">
             <label class="form-label" id="label-backup-pass">{{tr .Lang "settings.remote_backup_pass"}}</label>
-            <input type="password" name="remote_backup_password" placeholder="{{tr .Lang "settings.remote_backup_pass_hint"}}" class="form-control">
+            <div class="password-wrapper">
+              <input type="password" name="remote_backup_password" placeholder="{{tr .Lang "settings.remote_backup_pass_hint"}}" class="form-control">
+              <button type="button" class="password-toggle-btn" onclick="togglePasswordVisibility(this)" title="Passwort anzeigen/verbergen">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -507,15 +559,21 @@
       </div>
     </div>
 
-    <div style="margin-top: 24px; display: flex; justify-content: flex-end;">
-      <button type="submit" class="btn btn-primary" style="padding: 10px 24px; font-size: 14px;">
+    <!-- Sticky Save Bar -->
+    <div class="sticky-save-bar">
+      <div class="sticky-save-bar-hint">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+        <span>Änderungen speichern</span>
+      </div>
+      <button type="submit" class="btn btn-primary" style="padding: 9px 24px; font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
         {{tr .Lang "settings.btn_save_all"}}
       </button>
     </div>
   </form>
 
   <!-- Backup & Restore Panel -->
-  <div class="panel" style="margin-top: 24px;">
+  <div class="panel" id="sec-backup" style="margin-top: 24px;">
     <div class="panel-header">
       <div>
         <h3 class="panel-title">{{tr .Lang "settings.backup_title"}}</h3>
@@ -719,6 +777,28 @@ function toggleAutoUpdateScheduleUI() {
   if (groupWday) groupWday.style.display = val === 'weekly' ? 'block' : 'none';
   if (groupDay) groupDay.style.display = val === 'monthly' ? 'block' : 'none';
 }
+
+function togglePasswordVisibility(btn) {
+  const input = btn.parentElement.querySelector('input');
+  if (!input) return;
+  if (input.type === 'password') {
+    input.type = 'text';
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>';
+  } else {
+    input.type = 'password';
+    btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
+  }
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+  const navPills = document.querySelectorAll('.settings-nav-pill');
+  navPills.forEach(pill => {
+    pill.addEventListener('click', function() {
+      navPills.forEach(p => p.classList.remove('active'));
+      this.classList.add('active');
+    });
+  });
+});
 </script>
 {{end}}
 

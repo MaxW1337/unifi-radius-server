@@ -80,7 +80,10 @@
 <div class="panel">
   <div class="panel-header">
     <div>
-      <h3 class="panel-title">{{tr .Lang "logs.hist_title"}}</h3>
+      <h3 class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+        <span>{{tr .Lang "logs.hist_title"}}</span>
+        <span class="badge dim" style="font-size: 11px;">{{len .Logs}}</span>
+      </h3>
       <p class="panel-subtitle">{{tr .Lang "logs.hist_subtitle" .RetentionDays}}</p>
     </div>
     <form method="GET" action="/logs" style="display: flex; gap: 8px;">
@@ -121,7 +124,7 @@
             {{end}}
           </td>
           <td>
-            <span class="code-pill">{{if .ClientMAC}}{{.ClientMAC}}{{else}}{{.Username}}{{end}}</span>
+            <span class="code-pill copyable" onclick="copyToClipboard('{{if .ClientMAC}}{{.ClientMAC}}{{else}}{{.Username}}{{end}}', this, 'MAC')" title="Klicken zum Kopieren">{{if .ClientMAC}}{{.ClientMAC}}{{else}}{{.Username}}{{end}}</span>
           </td>
           <td>
             {{if .VLANID}}
@@ -137,7 +140,11 @@
             {{end}}
           </td>
           <td style="color: var(--text-muted); font-size: 12px;">{{.NASIP}}:{{.NASPort}}</td>
-          <td style="color: var(--text-dim); font-size: 12px;">{{printf "%.1f" .LatencyMS}} ms</td>
+          <td>
+            <span class="latency-pill {{if lt .LatencyMS 5.0}}latency-fast{{else if lt .LatencyMS 20.0}}latency-normal{{else}}latency-slow{{end}}">
+              {{printf "%.1f" .LatencyMS}} ms
+            </span>
+          </td>
         </tr>
         {{else}}
         <tr>
