@@ -1,7 +1,7 @@
 .PHONY: all build build-udm test clean
 
 BINARY_NAME=unifi-radius
-VERSION ?= 1.0.0
+VERSION ?= 1.0.4
 COMMIT = $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 DATE = $(shell date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "today")
 LDFLAGS = -s -w -X main.Version=$(VERSION) -X main.GitCommit=$(COMMIT) -X main.BuildDate=$(DATE)

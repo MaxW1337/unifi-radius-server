@@ -66,7 +66,7 @@ func NewService(currentVersion string, repoOwner, repoName string) *Service {
 		repoName = "unifi-radius-server"
 	}
 	if currentVersion == "" {
-		currentVersion = "1.0.0"
+		currentVersion = "1.0.4"
 	}
 
 	return &Service{
