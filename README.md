@@ -5,55 +5,61 @@
 [![Release](https://github.com/MaxW1337/unifi-radius-server/actions/workflows/release.yml/badge.svg)](https://github.com/MaxW1337/unifi-radius-server/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-Ein leichtgewichtiger, robuster und autarker **RADIUS-Server in Go**, der direkt nativ auf der **UniFi Dream Machine Pro (UDM-Pro)** und **UDM-SE** (UniFi OS 3.x / 4.x, ARM64) läuft.
+A lightweight, robust, and self-contained **RADIUS server written in Go**, designed to run natively on the **UniFi Dream Machine Pro (UDM-Pro)**, **UDM-SE**, and **UDR** (UniFi OS 3.x / 4.x, ARM64).
 
 ---
 
 ## Highlights
 
-* 🚀 **Nativ & Extrem Schlank**: Single-Binary ARM64 unter `/data/unifi-radius/` (überlebt UDM-Firmware-Updates, nur ~15MB RAM, kein Docker/Podman-Overhead).
-* 🔒 **MAC Authentication Bypass (MAB)**: Automatische Erkennung und Authentifizierung von kabelgebundenen Switch-Ports und WLAN-Geräten.
-* 🏷️ **Dynamic VLAN Assignment (RFC 2868 / 3580)**: Automatische Zuweisung des Ziel-VLANs per RADIUS-Tunnel-Attribute.
-* 🌐 **Nahtlose UniFi-Integration**:
-  * **Hybride Authentifizierung**: Verbindung wahlweise über offiziellen **UniFi API-Key** (ab UniFi OS 3.x / Network 8.x) oder **lokalen Service-Account** (Benutzer/Passwort).
-  * **VLAN Dropdowns**: Lädt alle definierten Netzwerke/VLANs direkt aus der UDM.
-  * **Auto-Autorisierung von Switches & APs**: Erkennt UniFi-Geräte automatisch und hinterlegt sie als RADIUS-Clients (NAS) mit dem konfigurierten Shared Secret.
-  * **Geräte-Datenanreicherung**: Liest Namen, Hostnames, Hersteller (OUI), IP-Adressen und verbundene Switch-Ports automatisch aus UniFi aus.
-* 🛡️ **Integrierte Zertifizierungsstelle (Internal CA)**:
-  * Integrierte Root-CA für 802.1X EAP-TLS.
-  * 1-Klick-Ausstellung von Client-Zertifikaten.
-  * Direkter Download als passwortgeschütztes **PKCS#12 (.p12 / .pfx)** Bundle, **PEM-Dateien** oder **Apple `.mobileconfig` Profil** für 1-Klick-WLAN-Einrichtung auf iPhone, iPad und Mac.
-* ⚡ **100% Autarkes UniFi-Style Webinterface**:
-  * Dunkles, modernes Design im UniFi OS Look.
-  * **Zero-CDN**: Alle Assets (HTMX, CSS, Icons) sind komplett per Go `embed` in die Binärdatei einkompiliert – funktioniert 100% offline und in isolierten Netzen.
-  * **WebSockets Live Monitor**: Eingehende RADIUS-Authentifizierungsanfragen und Server-Logs werden in Echtzeit ohne Neuladen der Seite gestreamt.
-* 🔄 **Integrierte Self-Update Engine**:
-  * **1-Klick-Aktualisierung** direkt im Webinterface mit Live-Fortschritt und automatischem Neuladen.
-  * **Automatische Updates**: Konfigurierbare Wartungsfenster (täglich, wöchentlich oder monatlich zur gewünschten Uhrzeit).
-  * **Kryptografische Sicherheit**: Streaming-Validierung der SHA-256 Prüfsummen gegen GitHub Releases (`checksums.txt`) verhindert manipulierte Binaries.
-* 💾 **Pure-Go SQLite**: Lokale Speicherung in `/data/unifi-radius/radius.db` ohne CGO-Abhängigkeit.
+* 🚀 **Native & Extremely Lightweight**: Single standalone ARM64 binary located under `/data/unifi-radius/` (survives UDM firmware updates, ~15MB RAM footprint, zero Docker/Podman overhead).
+* 🔒 **MAC Authentication Bypass (MAB)**: Seamless discovery and authentication for wired switch ports and wireless devices.
+* 🏷️ **Dynamic VLAN Assignment (RFC 2868 / 3580)**: Automatically assigns devices to their designated VLANs using standard RADIUS tunnel attributes.
+* 🌐 **Seamless UniFi Network Integration**:
+  * **Hybrid Authentication**: Connect via official **UniFi API Key** (UniFi OS 3.x+ / Network 8.x+) or **Local Service Account** (username & password).
+  * **Dynamic VLAN Dropdowns**: Automatically fetches all defined networks/VLANs directly from your UDM.
+  * **Auto-Discovery of Switches & APs**: Discovers UniFi network hardware and provisions them as RADIUS clients (NAS) using your configured Shared Secret.
+  * **Device Metadata Enrichment**: Resolves client hostnames, vendor OUIs, IP addresses, and switch port mappings directly from UniFi Network.
+* 🛡️ **Built-in Certificate Authority (EAP-TLS CA)**:
+  * Integrated Root CA for secure 802.1X EAP-TLS certificate-based authentication.
+  * 1-Click client certificate issuance.
+  * Direct export as password-protected **PKCS#12 (.p12 / .pfx)** bundles, individual **PEM files**, or **Apple `.mobileconfig` profiles** for 1-click Wi-Fi setup on iPhone, iPad, and Mac.
+* ⚡ **100% Self-Contained UniFi-Style Web Interface**:
+  * Clean, responsive dark theme matching official UniFi OS UX design principles.
+  * **Zero CDN Dependencies**: All assets (HTMX, CSS, icons) are embedded directly into the Go binary via `embed` – works 100% offline and in air-gapped networks.
+  * **Real-Time WebSocket Monitor**: Live streaming of incoming RADIUS authentications, client state changes, and server logs.
+* 🔍 **Live Log Console with Multi-Filters**:
+  * Real-time stream filtering by log level (`INFO`, `WARN`, `ERROR`), source (`RADIUS`, `UniFi Sync`, `CLIENT-ACTION`, etc.), and free-text search.
+  * Live stream pause toggle and 1-click log export.
+* 🔄 **Integrated Self-Update Engine**:
+  * **1-Click Self-Update** in the Web UI with live progress indicators and automatic restart.
+  * **Configurable Automated Updates**: Scheduled maintenance windows (daily, weekly, or monthly at your specified time).
+  * **Cryptographic Integrity**: SHA-256 checksum verification against official GitHub Releases (`checksums.txt`) before applying updates.
+* 💾 **Pure-Go SQLite Storage**: Zero external runtime dependencies; uses modern pure-Go SQLite under `/data/unifi-radius/radius.db`.
+* 🔔 **Multi-Channel Alerts & Automated Backups**:
+  * Notifications via **Telegram**, **Discord**, **Pushover**, and **Home Assistant Webhooks**.
+  * Automated scheduled backups to **WebDAV (Nextcloud)**, **S3/MinIO**, or local mounted shares.
 
 ---
 
-## 1-Klick Installation auf der UDM (Pro / SE)
+## 1-Click Installation on UDM (Pro / SE / UDR)
 
-Verbinde dich per SSH mit deiner UDM-Pro oder UDM-SE und führe folgenden Befehl aus:
+Connect to your UDM via SSH and execute the following command:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/MaxW1337/unifi-radius-server/main/scripts/install.sh | bash
 ```
 
-### Was das Skript macht:
-1. Erkennt automatisch die Prozessorarchitektur (`arm64`).
-2. Lädt das neueste Release-Binary von GitHub herunter.
-3. Erstellt das persistente Verzeichnis `/data/unifi-radius`.
-4. Richtet den systemd-Dienst `/etc/systemd/system/unifi-radius.service` ein.
-5. Installiert bei vorhandenem `on-boot-script` (`/data/on_boot.d/`) einen automatischen Wiederherstellungs-Hook für Firmware-Updates.
-6. Startet den Server und gibt die Zugangsdaten aus.
+### What the installer does:
+1. Detects your CPU architecture (`arm64`).
+2. Fetches and validates the latest release binary from GitHub.
+3. Provisions the persistent data directory `/data/unifi-radius`.
+4. Configures and enables the systemd service `/etc/systemd/system/unifi-radius.service`.
+5. Installs an automatic persistence hook for firmware updates if `on-boot-script` (`/data/on_boot.d/`) is detected.
+6. Starts the server and displays the initial setup URL.
 
-### Alternative: Installation via Debian-Paket (.deb)
+### Alternative: Install via Debian Package (.deb)
 
-Von der [Releases-Seite](https://github.com/MaxW1337/unifi-radius-server/releases) das passende `.deb`-Paket herunterladen und installieren:
+Download and install the appropriate `.deb` package from the [Releases page](https://github.com/MaxW1337/unifi-radius-server/releases):
 
 ```bash
 dpkg -i unifi-radius_*_arm64.deb
@@ -61,129 +67,129 @@ dpkg -i unifi-radius_*_arm64.deb
 
 ---
 
-## Ersteinrichtung
+## Initial Setup & Quick Start
 
-1. **Webinterface aufrufen**:
-   Öffne im Browser: `http://<DEINE-UDM-IP>:9182`
-   Beim ersten Aufruf wirst du aufgefordert, dein **Admin-Passwort** festzulegen.
+1. **Access the Web Interface**:
+   Open your browser and navigate to: `http://<YOUR-UDM-IP>:9182`
+   On first launch, you will be prompted to set up your **Admin Password**.
 
-2. **UniFi-Verbindung konfigurieren**:
-   * Gehe im Menü auf **Einstellungen**.
-   * Wähle als Authentifizierung **UniFi API-Key** (erstellbar in UniFi OS unter *Settings* -> *Integrations* -> *API Keys*) oder gib Benutzername/Passwort eines lokalen UDM-Admins ein.
-   * Klicke auf **Verbindung testen** und anschließend auf **Einstellungen speichern**.
-   * Klicke oben rechts auf **UniFi Sync**, um sofort alle VLANs und Switches zu importieren.
+2. **Configure UniFi Network Connection**:
+   * Navigate to **Settings** in the side navigation bar.
+   * Under **UniFi Integration**, choose **UniFi API Key** (generate one in UniFi OS under *Settings* -> *Integrations* -> *API Keys*) or enter the credentials of a local UDM administrator.
+   * Click **Test Connection**, followed by **Save Settings**.
+   * Click **UniFi Sync** in the top navigation bar to immediately import all VLANs and UniFi switches/APs.
 
-3. **UniFi RADIUS Profil einrichten**:
-   * Öffne deine UniFi Network Application.
-   * Gehe zu **Settings** -> **Profiles** -> **RADIUS**.
-   * Erstelle ein neues Profil:
+3. **Configure UniFi RADIUS Profile**:
+   * Open the UniFi Network Application.
+   * Navigate to **Settings** -> **Profiles** -> **RADIUS**.
+   * Create a new profile (or update the existing one):
      * **Profile Name**: `UDM-Internal-RADIUS`
-     * **VLAN Support**: Aktivieren (Wichtig für Dynamic VLAN!)
-     * **IP Address**: `127.0.0.1` (oder die LAN-IP der UDM)
+     * **VLAN Support**: Enabled (Required for Dynamic VLAN assignment!)
+     * **IP Address**: `127.0.0.1` (or your UDM's gateway IP)
      * **Port**: `1812`
-     * **Password / Shared Secret**: Das in den Server-Einstellungen hinterlegte *Global Shared Secret*.
-   * Speichern.
+     * **Password / Shared Secret**: The *Global Shared Secret* configured in your server settings.
+   * Save changes.
 
-4. **Wired Switch 802.1X Control (Globale Switch-Einstellungen)**:
-   * Gehe in UniFi Network zu **Settings** -> **Networks** -> **Global Switch Settings**.
-   * Unter **802.1X Control**:
-     * **Credential Source**: Von *Local* auf **RADIUS Profile** umstellen.
-     * **RADIUS Profile**: `UDM-Internal-RADIUS` auswählen.
-     * **Fallback Network**: `LAN` (oder dein Standard-Netzwerk).
-   * *(Hinweis: Der integrierte Migrations-Assistent übernimmt diese Umstellung automatisch über die UniFi API).*
+4. **Wired Switch 802.1X Control (Global Switch Settings)**:
+   * In UniFi Network, navigate to **Settings** -> **Networks** -> **Global Switch Settings**.
+   * Under **802.1X Control**:
+     * **Credential Source**: Change from *Local* to **RADIUS Profile**.
+     * **RADIUS Profile**: Select `UDM-Internal-RADIUS`.
+     * **Fallback Network**: Select `LAN` (or your default native network).
+   * *(Note: The built-in Migration Assistant can automate this step via the UniFi API).*
 
-5. **Port auf Switch aktivieren (MAB)**:
-   * Wähle in UniFi Network einen Switch und den gewünschten Port aus.
-   * Setze **802.1X Control** auf **MAC-based (MAB)**.
-   * Sobald ein Gerät angeschlossen wird, erscheint es im **Live Monitor** des UniFi RADIUS Servers!
-
----
-
-## Migration vom integrierten UniFi RADIUS Server
-
-Falls in deiner UniFi Network Application der integrierte RADIUS-Server aktiviert ist, bietet das Webinterface einen **automatischen Migrations-Assistenten** unter **Einstellungen -> UniFi RADIUS Migration & Übernahme**:
-
-1. **Automatische Erkennung**:
-   * Erkennt sofort, ob der integrierte UniFi RADIUS-Server aktiv ist.
-   * Ermittelt die Anzahl der vorhandenen lokalen RADIUS-Benutzer und MAB-Einträge sowie das hinterlegte Secret.
-2. **1-Klick Migration**:
-   * **Import aller Accounts**: Übernimmt alle MAB-Clients (automatisch formatiert) und 802.1X Benutzer (Passwörter sicher gehasht) inklusive ihrer VLAN-Zuweisungen nach SQLite.
-   * **Shared Secret Übernahme**: Synchronisiert das bestehende Shared Secret, sodass Switches und Access Points nicht manuell umkonfiguriert werden müssen.
-   * **UniFi RADIUS-Profil anpassen**: Erstellt bzw. aktualisiert das UniFi RADIUS-Profil `UDM-Internal-RADIUS` (`127.0.0.1:1812`, VLAN Support: Aktiv) vollautomatisch.
-   * **Automatische WLAN-Migration**: Stellt alle Wireless-Netzwerke (SSIDs) mit WPA-Enterprise oder MAC-Authentifizierung automatisch vom integrierten Standard-Profil (`Default`) auf `UDM-Internal-RADIUS` um. Verhindert zuverlässig die UniFi-Sperre *"Default profile cannot be paused because it is used by WiFi..."*.
-   * **Globale Switch 802.1X Control**: Aktualisiert die Switch-Einstellungen automatisch auf RADIUS-Profil `UDM-Internal-RADIUS` mit LAN-Fallback.
-   * **Port 1812 freigeben**: Deaktiviert den integrierten UniFi FreeRADIUS-Dienst automatisch über die UniFi API, damit der neue Server den UDP-Port 1812 exklusiv binden kann.
+5. **Enable MAB on Switch Ports**:
+   * In UniFi Network, select a Switch and open Port Manager.
+   * Select a port and set **802.1X Control** to **MAC-based (MAB)**.
+   * Connect a client device – its authentication request will appear instantly in the **Live Monitor**!
 
 ---
 
-## Richtlinien für unbekannte Geräte (MAB Policy)
+## Migration from Built-in UniFi RADIUS
 
-In den Einstellungen kann festgelegt werden, wie sich der Server bei bisher unbekannten MAC-Adressen verhalten soll:
+If your UDM is currently running the built-in UniFi RADIUS server, the Web UI provides an **Automated Migration Assistant** under **Settings -> UniFi RADIUS Migration & Takeover**:
 
-| Richtlinie | Verhalten bei unbekannter MAC | Verwendung |
+1. **Automatic Status Detection**:
+   * Detects whether the built-in FreeRADIUS service is active.
+   * Analyzes existing local RADIUS users, MAB entries, and configured secrets.
+2. **1-Click Takeover**:
+   * **Full Account Import**: Migrates all MAB devices (auto-normalized to standard MAC formats) and 802.1X accounts with their designated VLANs to SQLite.
+   * **Shared Secret Sync**: Automatically adopts the existing secret so switches and access points continue operating without manual changes.
+   * **RADIUS Profile Automation**: Creates or updates the UniFi RADIUS profile `UDM-Internal-RADIUS` (`127.0.0.1:1812`, VLAN Support: Active).
+   * **Automated WLAN Re-Assignment**: Seamlessly switches all Enterprise and MAB-enabled Wi-Fi networks (SSIDs) from the default profile (`Default`) to `UDM-Internal-RADIUS`. This prevents the common UniFi blocking error *"Default profile cannot be paused because it is used by WiFi..."*.
+   * **Global Switch 802.1X Control**: Sets switch 802.1X authentication source to `UDM-Internal-RADIUS` with LAN fallback.
+   * **Port 1812 Release**: Disables the built-in UniFi FreeRADIUS service via the UniFi API so that port 1812 can be bound exclusively.
+
+---
+
+## Unknown Device Policies (MAB Policies)
+
+You can customize how the server handles unknown MAC addresses under Settings:
+
+| Policy | Behavior on Unknown MAC | Recommended Use Case |
 | :--- | :--- | :--- |
-| **Auto-Accept** | Erteilt sofort `Access-Accept` mit dem konfigurierten **Default Allow VLAN** und legt das Gerät als `pending` in der Datenbank an. | Komfortabelstes Onboarding (z.B. Geräte landen sofort in einem Quarantäne/Gast-VLAN). |
-| **Reject & Log** | Erteilt `Access-Reject`, speichert das Gerät jedoch in der **Pending-Warteschlange**. Der Admin kann es mit 1 Klick im WebUI freigeben. | Maximale Kontrolle bei bequemer Freischaltung ohne manuelles Abtippen von MACs. |
-| **Strict Reject** | Erteilt sofort `Access-Reject` ohne Speicherung in der Datenbank. | Nur vorab manuell registrierte Whitelist-Geräte erhalten Netzwerkzugriff. |
+| **Auto-Accept** | Immediately grants `Access-Accept` with the configured **Default Allow VLAN** and records the device as `pending`. | Frictionless onboarding (e.g., routing new devices to an isolated quarantine/guest VLAN). |
+| **Reject & Log** | Issues `Access-Reject`, but records the device in the **Pending Queue**. Admins can approve it with 1 click in the Web UI. | Strong security with convenient 1-click approvals without manual MAC typing. |
+| **Strict Reject** | Immediately rejects without persisting to the database. | Zero-trust environments where only pre-whitelisted MACs are permitted. |
 
 ---
 
-## Zertifikate & 802.1X EAP-TLS
+## Certificates & 802.1X EAP-TLS
 
-Der Server beinhaltet eine vollwertige Zertifizierungsstelle (CA):
-1. Navigiere zu **Zertifikate (CA)** und klicke auf **Root-CA jetzt initialisieren**.
-2. Klicke auf **Neues Zertifikat ausstellen** und gib einen Benutzernamen oder Gerätenamen (z.B. `chef-laptop` oder `max.mustermann`) ein.
-3. Wähle das gewünschte Download-Format:
-   * **.P12**: Standard PKCS#12 Bundle für Windows, macOS, Android und Linux.
-   * **PEM**: Getrennte Zertifikats- und Schlüsseldateien.
-   * **Apple Profil (.mobileconfig)**: Datei per AirDrop, Mail oder Download auf iPhone, iPad oder Mac öffnen – richtet das WLAN und alle Zertifikate vollautomatisch mit einem Klick ein!
+The server includes a complete internal Certificate Authority (CA):
+1. Navigate to **Certificates (CA)** and click **Initialize Root CA**.
+2. Click **Issue New Certificate** and enter a username or device identifier (e.g., `ceo-laptop` or `alice.smith`).
+3. Download the bundle in your preferred format:
+   * **.P12**: Standard PKCS#12 bundle for Windows, macOS, Android, and Linux.
+   * **PEM**: Separate certificate and private key files.
+   * **Apple Profile (.mobileconfig)**: Send via AirDrop or email to iPhone, iPad, or Mac – automatically installs the root CA and configures the Wi-Fi network with 1 tap!
 
 ---
 
-## Manuelle Steuerung & Befehle
+## Service Management & CLI Commands
 
 ```bash
-# Status des Dienstes anzeigen
+# Check service status
 systemctl status unifi-radius
 
-# Live-Logs der UDM anzeigen
+# Follow live service logs on UDM
 journalctl -u unifi-radius -f
 
-# Dienst neu starten
+# Restart service
 systemctl restart unifi-radius
 
-# Dienst stoppen
+# Stop service
 systemctl stop unifi-radius
 
-# Admin-Passwort zurücksetzen (aktiviert Ersteinrichtungs-Maske im Web)
+# Reset admin password (re-enables initial setup wizard in Web UI)
 unifi-radius -reset-admin-password
 
-# Admin-Passwort direkt über CLI vergeben
-unifi-radius -set-admin-password "MeinNeuesPasswort123!"
+# Set admin password directly from command line
+unifi-radius -set-admin-password "MySuperSecretPassword123!"
 
-# Deinstallation
+# Complete uninstallation
 bash /data/unifi-radius/scripts/uninstall.sh
 ```
 
 ---
 
-## Lokale Entwicklung & Bauen
+## Local Development & Building
 
-Voraussetzung: Go 1.27+
+Requirements: Go 1.22+ (tested with Go 1.24/1.27)
 
 ```bash
-# Abhängigkeiten laden & Unit-Tests ausführen
+# Run unit and integration tests
 go test -v ./...
 
-# Lokales Binary bauen
+# Build local binary
 go build -o bin/unifi-radius ./cmd/server
 
-# Cross-Compile für UDM-Pro / SE (Linux ARM64)
+# Cross-compile for UDM-Pro / SE / UDR (Linux ARM64)
 CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/unifi-radius-arm64 ./cmd/server
 ```
 
 ---
 
-## Lizenz
+## License
 
-Dieses Projekt ist unter der [MIT-Lizenz](LICENSE) lizenziert.
+This project is licensed under the [MIT License](LICENSE).
