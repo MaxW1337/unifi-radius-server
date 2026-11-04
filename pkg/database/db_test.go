@@ -298,3 +298,102 @@ func TestCertificates(t *testing.T) {
 	}
 }
 
+func TestAuthLogsMultiFieldSearchAndRaw(t *testing.T) {
+	db := setupTestDB(t)
+
+	vlan10 := 10
+	logEntry := &models.AuthLog{
+		Timestamp:      time.Now().UTC(),
+		ClientMAC:      "AA:BB:CC:DD:EE:FF",
+		Username:       "user-device-1",
+		AuthType:       models.AuthTypeMAB,
+		Status:         "ACCEPT",
+		VLANID:         &vlan10,
+		Reason:         "MAB Dynamic VLAN assigned",
+		NASIP:          "192.168.1.50",
+		NASPort:        "1/0/5",
+		LatencyMS:      2.4,
+		EnrichedName:   "Office Printer Pro",
+		EnrichedVendor: "Canon Inc.",
+		RawRequest:     "RAW-REQUEST-PACKET-DATA",
+		RawResponse:    "RAW-RESPONSE-PACKET-DATA",
+	}
+
+	if err := db.InsertAuthLog(logEntry); err != nil {
+		t.Fatalf("InsertAuthLog failed: %v", err)
+	}
+
+	// 1. Search by unformatted MAC (lowercase hex without colons)
+	logs, total, err := db.ListAuthLogs(10, 0, "", "aabbccddeeff")
+	if err != nil || total != 1 || len(logs) != 1 {
+		t.Fatalf("ListAuthLogs by unformatted MAC failed: total=%d, len=%d, err=%v", total, len(logs), err)
+	}
+
+	// 2. Search by partial colon MAC
+	logs, total, err = db.ListAuthLogs(10, 0, "", "cc:dd")
+	if err != nil || total != 1 || len(logs) != 1 {
+		t.Fatalf("ListAuthLogs by partial MAC failed: total=%d, len=%d, err=%v", total, len(logs), err)
+	}
+
+	// 3. Search by EnrichedName
+	logs, total, err = db.ListAuthLogs(10, 0, "", "Printer")
+	if err != nil || total != 1 || len(logs) != 1 {
+		t.Fatalf("ListAuthLogs by EnrichedName failed: total=%d, len=%d, err=%v", total, len(logs), err)
+	}
+
+	// 4. Search by Vendor
+	logs, total, err = db.ListAuthLogs(10, 0, "", "Canon")
+	if err != nil || total != 1 || len(logs) != 1 {
+		t.Fatalf("ListAuthLogs by Vendor failed: total=%d, len=%d, err=%v", total, len(logs), err)
+	}
+
+	// 5. Search by NAS IP
+	logs, total, err = db.ListAuthLogs(10, 0, "", "192.168.1.50")
+	if err != nil || total != 1 || len(logs) != 1 {
+		t.Fatalf("ListAuthLogs by NAS IP failed: total=%d, len=%d, err=%v", total, len(logs), err)
+	}
+
+	// 6. Search by Reason
+	logs, total, err = db.ListAuthLogs(10, 0, "", "Dynamic VLAN")
+	if err != nil || total != 1 || len(logs) != 1 {
+		t.Fatalf("ListAuthLogs by Reason failed: total=%d, len=%d, err=%v", total, len(logs), err)
+	}
+
+	// 7. Get by ID and verify RAW data persistence
+	id := logs[0].ID
+	fetched, err := db.GetAuthLogByID(id)
+	if err != nil {
+		t.Fatalf("GetAuthLogByID failed: %v", err)
+	}
+	if fetched.RawRequest != "RAW-REQUEST-PACKET-DATA" {
+		t.Errorf("RawRequest mismatch: got %q", fetched.RawRequest)
+	}
+	if fetched.RawResponse != "RAW-RESPONSE-PACKET-DATA" {
+		t.Errorf("RawResponse mismatch: got %q", fetched.RawResponse)
+	}
+}
+
+func TestRadiusDebugModeSettings(t *testing.T) {
+	db := setupTestDB(t)
+
+	s, err := db.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings failed: %v", err)
+	}
+	if s.RadiusDebugMode {
+		t.Errorf("Expected RadiusDebugMode default false, got true")
+	}
+
+	if err := db.SetRadiusDebugMode(true); err != nil {
+		t.Fatalf("SetRadiusDebugMode failed: %v", err)
+	}
+
+	s, err = db.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings failed: %v", err)
+	}
+	if !s.RadiusDebugMode {
+		t.Errorf("Expected RadiusDebugMode true after update, got false")
+	}
+}
+

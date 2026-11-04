@@ -8,6 +8,22 @@
     </div>
     <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
       <span id="logStatsBadge" class="badge dim" style="font-size: 11px;">0 Zeilen</span>
+      
+      <!-- DEBUG Mode Toggle Button -->
+      <div id="debug-mode-btn-container" style="display: inline-block;">
+        {{if .DebugMode}}
+          <button type="button" class="btn btn-warning btn-sm" hx-post="/api/radius/debug/toggle" hx-target="#debug-mode-btn-container" hx-swap="outerHTML" title="Klicken zum Deaktivieren">
+            <span class="pulse-indicator" style="background:#f59e0b; width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px;"></span>
+            DEBUG: AKTIV
+          </button>
+        {{else}}
+          <button type="button" class="btn btn-secondary btn-sm" hx-post="/api/radius/debug/toggle" hx-target="#debug-mode-btn-container" hx-swap="outerHTML" title="Klicken zum Aktivieren (RAW Pakete einsehen)">
+            <span style="opacity:0.5; margin-right:4px;">🐛</span>
+            DEBUG: Aus
+          </button>
+        {{end}}
+      </div>
+
       <button class="btn btn-secondary btn-sm" id="pauseStreamBtn" onclick="togglePauseStream()">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
         {{tr .Lang "logs.btn_pause"}}
@@ -40,6 +56,7 @@
         <span style="font-size: 11px; color: var(--text-dim); font-weight: 500;">{{tr .Lang "logs.filter_level"}}</span>
         <div class="filter-pill-group">
           <button type="button" class="filter-pill active" data-level="" onclick="setLevelFilter('', this)">{{tr .Lang "logs.filter_all_levels"}}</button>
+          <button type="button" class="filter-pill" data-level="DEBUG" onclick="setLevelFilter('DEBUG', this)" style="color: #38bdf8;">DEBUG</button>
           <button type="button" class="filter-pill" data-level="INFO" onclick="setLevelFilter('INFO', this)" style="color: #10b981;">INFO</button>
           <button type="button" class="filter-pill" data-level="WARN" onclick="setLevelFilter('WARN', this)" style="color: #f59e0b;">WARN</button>
           <button type="button" class="filter-pill" data-level="ERROR" onclick="setLevelFilter('ERROR', this)" style="color: #ef4444;">ERROR</button>
@@ -52,6 +69,7 @@
         <select id="logSourceSelect" class="form-control" style="width: 140px; padding: 4px 8px; font-size: 12px;" onchange="applyLogFilters()">
           <option value="">{{tr .Lang "logs.filter_all_sources"}}</option>
           <option value="RADIUS">RADIUS</option>
+          <option value="RADIUS-RAW">RADIUS-RAW (Pakete)</option>
           <option value="UniFi Sync">UniFi Sync</option>
           <option value="CLIENT-ACTION">Client Action</option>
           <option value="UPDATE">Update</option>
@@ -71,30 +89,57 @@
 
   <div style="padding: 16px;">
     <div id="terminalConsole" class="terminal-window">
-      <!-- Injected live via WebSocket -->
+      {{range .InitialLogs}}
+      <div class="terminal-line" data-level="{{.Level}}" data-source="{{.Source}}">
+        <span class="terminal-ts">[<time class="local-time" datetime="{{.Timestamp}}" data-format="time">{{.Timestamp}}</time>]</span>
+        <span class="terminal-src">[{{.Source}}]</span>
+        <span class="{{if eq .Level "DEBUG"}}terminal-lvl-debug{{else if eq .Level "WARN"}}terminal-lvl-warn{{else if eq .Level "ERROR"}}terminal-lvl-error{{else}}terminal-lvl-info{{end}}">[{{.Level}}]</span>
+        {{if containsNewline .Message}}
+          <pre class="terminal-pre">{{.Message}}</pre>
+        {{else}}
+          <span class="terminal-msg">{{.Message}}</span>
+        {{end}}
+      </div>
+      {{end}}
+      <div id="terminal-no-matches" style="display: none; padding: 32px 16px; text-align: center; color: var(--text-dim); font-size: 13px;">
+        Keine Log-Einträge entsprechen dem aktuellen Filter.
+      </div>
     </div>
   </div>
 </div>
 
-<!-- Historical Audit Logs -->
+<!-- Dedicated RADIUS Request Historie -->
 <div class="panel">
-  <div class="panel-header">
+  <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
     <div>
       <h3 class="panel-title" style="display: flex; align-items: center; gap: 8px;">
         <span>{{tr .Lang "logs.hist_title"}}</span>
-        <span class="badge dim" style="font-size: 11px;">{{len .Logs}}</span>
+        <span class="badge dim" style="font-size: 11px;">{{.TotalLogs}} Anfragen</span>
       </h3>
       <p class="panel-subtitle">{{tr .Lang "logs.hist_subtitle" .RetentionDays}}</p>
     </div>
-    <form method="GET" action="/logs" style="display: flex; gap: 8px;">
-      <input type="text" id="histLogSearchInput" name="mac" value="{{.MACFilter}}" placeholder="{{tr .Lang "logs.search_ph"}}" class="form-control" style="width: 220px; padding: 6px 12px; font-size: 12px;" oninput="filterHistTable()">
-      <select id="histLogStatusSelect" name="status" class="form-control" style="width: 140px; padding: 6px 10px; font-size: 12px;" onchange="this.form.submit()">
-        <option value="" {{if eq .StatusFilter ""}}selected{{end}}>{{tr .Lang "logs.filter_all"}}</option>
-        <option value="ACCEPT" {{if eq .StatusFilter "ACCEPT"}}selected{{end}}>{{tr .Lang "logs.filter_accept"}}</option>
-        <option value="REJECT" {{if eq .StatusFilter "REJECT"}}selected{{end}}>{{tr .Lang "logs.filter_reject"}}</option>
-      </select>
-      <button type="submit" class="btn btn-secondary btn-sm">{{tr .Lang "common.filter"}}</button>
-    </form>
+    
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <!-- Export CSV Button -->
+      <a href="/api/logs/export/csv?status={{.StatusFilter}}&q={{.QueryFilter}}" class="btn btn-secondary btn-sm" download title="Als CSV exportieren">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        {{tr .Lang "logs.btn_export_csv"}}
+      </a>
+
+      <!-- Server Search & Filter Form -->
+      <form method="GET" action="/logs" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+        <input type="text" id="histLogSearchInput" name="q" value="{{.QueryFilter}}" placeholder="{{tr .Lang "logs.search_ph"}}" class="form-control" style="width: 240px; padding: 6px 12px; font-size: 12px;" oninput="filterHistTable()">
+        <select id="histLogStatusSelect" name="status" class="form-control" style="width: 130px; padding: 6px 10px; font-size: 12px;" onchange="this.form.submit()">
+          <option value="" {{if eq .StatusFilter ""}}selected{{end}}>{{tr .Lang "logs.filter_all"}}</option>
+          <option value="ACCEPT" {{if eq .StatusFilter "ACCEPT"}}selected{{end}}>{{tr .Lang "logs.filter_accept"}}</option>
+          <option value="REJECT" {{if eq .StatusFilter "REJECT"}}selected{{end}}>{{tr .Lang "logs.filter_reject"}}</option>
+        </select>
+        <button type="submit" class="btn btn-secondary btn-sm">{{tr .Lang "common.filter"}}</button>
+        {{if or .QueryFilter .StatusFilter}}
+          <a href="/logs" class="btn btn-secondary btn-sm" style="color: var(--text-dim);" title="Filter zurücksetzen">&times;</a>
+        {{end}}
+      </form>
+    </div>
   </div>
 
   <div class="table-wrapper">
@@ -108,11 +153,12 @@
           <th>{{tr .Lang "logs.th_details"}}</th>
           <th>{{tr .Lang "logs.th_nas"}}</th>
           <th>{{tr .Lang "common.latency"}}</th>
+          <th style="text-align: right;">{{tr .Lang "logs.th_actions"}}</th>
         </tr>
       </thead>
-      <tbody>
+      <tbody id="history-feed-rows">
         {{range .Logs}}
-        <tr data-status="{{.Status}}">
+        <tr id="history-row-{{.ID}}" data-status="{{.Status}}" data-id="{{.ID}}">
           <td style="color: var(--text-dim); font-size: 12px;">
             <time class="local-time" datetime="{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}" data-format="datetime">{{.Timestamp.Format "02.01. 15:04:05"}}</time>
           </td>
@@ -134,21 +180,27 @@
             {{end}}
           </td>
           <td style="font-size: 12px;">
-            {{.Reason}}
+            <div><strong>{{.Reason}}</strong></div>
             {{if .EnrichedName}}
-              <div style="color: var(--text-dim); font-size: 11px;">UniFi: {{.EnrichedName}} ({{.EnrichedVendor}})</div>
+              <div style="color: var(--text-dim); font-size: 11px;">UniFi: {{.EnrichedName}} {{if .EnrichedVendor}}({{.EnrichedVendor}}){{end}}</div>
             {{end}}
           </td>
           <td style="color: var(--text-muted); font-size: 12px;">{{.NASIP}}:{{.NASPort}}</td>
           <td>
-            <span class="latency-pill {{if lt .LatencyMS 5.0}}latency-fast{{else if lt .LatencyMS 20.0}}latency-normal{{else}}latency-slow{{end}}">
+            <span class="latency-pill {{if lt .LatencyMS 15.0}}latency-fast{{else if lt .LatencyMS 50.0}}latency-normal{{else}}latency-slow{{end}}">
               {{printf "%.1f" .LatencyMS}} ms
             </span>
           </td>
+          <td style="text-align: right;">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="openRadiusDetailsModal({{.ID}})" style="padding: 3px 8px; font-size: 11px;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 3px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+              Details / RAW
+            </button>
+          </td>
         </tr>
         {{else}}
-        <tr>
-          <td colspan="7" style="text-align: center; color: var(--text-dim); padding: 40px;">
+        <tr id="empty-feed-placeholder">
+          <td colspan="8" style="text-align: center; color: var(--text-dim); padding: 40px;">
             {{tr .Lang "logs.empty_logs"}}
           </td>
         </tr>
@@ -158,12 +210,51 @@
   </div>
 </div>
 
+<!-- RADIUS Details & RAW Modal -->
+<div id="radiusDetailsModal" class="modal-backdrop" style="display: none; align-items: center; justify-content: center; z-index: 1050; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(4px);">
+  <div class="modal-content" style="background: var(--card-bg, #0f172a); border: 1px solid var(--border-color); border-radius: 12px; width: 90%; max-width: 860px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5);">
+    <!-- Modal Header -->
+    <div style="padding: 16px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h3 id="modalReqTitle" style="margin: 0; font-size: 16px; font-weight: 600; display: flex; align-items: center; gap: 8px;">
+          RADIUS Request Details
+        </h3>
+        <div id="modalReqSubtitle" style="font-size: 12px; color: var(--text-dim); margin-top: 2px;"></div>
+      </div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeRadiusDetailsModal()" style="font-size: 16px; padding: 2px 8px; line-height: 1;">&times;</button>
+    </div>
+    
+    <!-- Modal Tabs Bar -->
+    <div style="display: flex; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--border-color); background: rgba(0,0,0,0.2);">
+      <button type="button" class="modal-tab-btn active" id="tabBtnOverview" onclick="switchModalTab('overview')">Übersicht</button>
+      <button type="button" class="modal-tab-btn" id="tabBtnRawReq" onclick="switchModalTab('rawReq')">Request (RAW & Attribute)</button>
+      <button type="button" class="modal-tab-btn" id="tabBtnRawResp" onclick="switchModalTab('rawResp')">Response (RAW)</button>
+    </div>
+
+    <!-- Modal Body -->
+    <div style="padding: 20px; overflow-y: auto; flex: 1;" id="modalBodyContent">
+      <div id="modalLoading" style="text-align: center; padding: 40px; color: var(--text-dim);">Lade Request-Details...</div>
+      
+      <div id="tabContentOverview" style="display: none;"></div>
+      <div id="tabContentRawReq" style="display: none;"></div>
+      <div id="tabContentRawResp" style="display: none;"></div>
+    </div>
+
+    <!-- Modal Footer -->
+    <div style="padding: 12px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.2);">
+      <div id="modalFooterInfo" style="font-size: 11px; color: var(--text-dim);"></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="closeRadiusDetailsModal()">Schließen</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let autoScroll = true;
 let isPaused = false;
 let activeLevel = '';
 let activeSource = '';
 let pausedLinesCount = 0;
+let currentModalLog = null;
 
 function clearTerminal() {
   const term = document.getElementById('terminalConsole');
@@ -262,6 +353,11 @@ function applyLogFilters() {
     }
   });
 
+  const emptyNotice = document.getElementById('terminal-no-matches');
+  if (emptyNotice) {
+    emptyNotice.style.display = (lines.length > 0 && visibleCount === 0) ? 'block' : 'none';
+  }
+
   updateLogStats(visibleCount, lines.length);
 }
 
@@ -319,51 +415,219 @@ function filterHistTable() {
   });
 }
 
-// WebSocket Terminal Hook
+// Modal handling
+function openRadiusDetailsModal(id) {
+  const modal = document.getElementById('radiusDetailsModal');
+  const loading = document.getElementById('modalLoading');
+  const title = document.getElementById('modalReqTitle');
+  const subtitle = document.getElementById('modalReqSubtitle');
+  const contentOverview = document.getElementById('tabContentOverview');
+  const contentRawReq = document.getElementById('tabContentRawReq');
+  const contentRawResp = document.getElementById('tabContentRawResp');
+  const footerInfo = document.getElementById('modalFooterInfo');
+
+  if (!modal) return;
+  modal.style.display = 'flex';
+  loading.style.display = 'block';
+  contentOverview.style.display = 'none';
+  contentRawReq.style.display = 'none';
+  contentRawResp.style.display = 'none';
+  switchModalTab('overview');
+
+  fetch('/api/logs/auth/details?id=' + id)
+    .then(r => {
+      if (!r.ok) throw new Error('Status ' + r.status);
+      return r.json();
+    })
+    .then(log => {
+      currentModalLog = log;
+      loading.style.display = 'none';
+
+      const statusBadge = log.status === 'ACCEPT' 
+        ? '<span class="badge accept" style="font-size: 13px;">ACCEPT</span>' 
+        : '<span class="badge reject" style="font-size: 13px;">REJECT</span>';
+
+      const clientIdent = log.client_mac || log.username || 'Unbekannt';
+      title.innerHTML = `${statusBadge} Request #${log.id} - ${clientIdent}`;
+      
+      const d = new Date(log.timestamp);
+      subtitle.textContent = d.toLocaleString() + ' • NAS ' + log.nas_ip + ':' + log.nas_port + ' • Latenz ' + (log.latency_ms ? log.latency_ms.toFixed(1) : '0') + ' ms';
+      footerInfo.textContent = 'Auth-Typ: ' + (log.auth_type || 'MAB') + ' • ID: ' + log.id;
+
+      // Render Overview Tab
+      let vlanHTML = log.vlan_id ? `<span class="badge vlan">VLAN ${log.vlan_id}</span>` : '<span class="badge dim">Kein VLAN zugewiesen</span>';
+      let enrichedHTML = log.enriched_name 
+        ? `<div style="padding: 10px 14px; background: rgba(0, 102, 255, 0.1); border: 1px solid rgba(0, 102, 255, 0.3); border-radius: 6px; margin-top: 8px;">
+            <strong>UniFi Zuordnung:</strong> ${log.enriched_name} ${log.enriched_vendor ? '(' + log.enriched_vendor + ')' : ''}
+          </div>`
+        : '';
+
+      contentOverview.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 16px;">
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+            <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">Status & Grund</div>
+            <div style="margin-top: 4px; font-size: 14px; font-weight: 600;">${statusBadge}</div>
+            <div style="font-size: 12px; margin-top: 6px; color: var(--text-color);">${log.reason || 'Keine Angabe'}</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+            <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">Client / MAC</div>
+            <div style="margin-top: 4px; font-size: 13px; font-family: var(--font-mono);">
+              <span class="code-pill copyable" onclick="copyToClipboard('${clientIdent}', this, 'MAC')">${clientIdent}</span>
+            </div>
+            ${enrichedHTML}
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+            <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">Netzwerk / VLAN</div>
+            <div style="margin-top: 4px;">${vlanHTML}</div>
+            <div style="font-size: 12px; margin-top: 6px; color: var(--text-dim);">Latenz: ${(log.latency_ms || 0).toFixed(1)} ms</div>
+          </div>
+          <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+            <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">NAS (Switch / AP)</div>
+            <div style="margin-top: 4px; font-size: 13px; font-family: var(--font-mono);">${log.nas_ip}:${log.nas_port}</div>
+          </div>
+        </div>
+      `;
+
+      // Render Request RAW Tab
+      if (log.raw_request) {
+        contentRawReq.innerHTML = `
+          <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-dim);">Eingehendes RADIUS-Paket (Decoded & Hex Dump):</span>
+            <button class="btn btn-secondary btn-sm" onclick="copyRawDump('req')" style="font-size: 11px; padding: 2px 8px;">Kopieren</button>
+          </div>
+          <div class="raw-dump-box" id="rawDumpReq">${log.raw_request}</div>
+        `;
+      } else {
+        contentRawReq.innerHTML = `
+          <div style="text-align: center; padding: 36px 16px; color: var(--text-dim);">
+            <div style="font-size: 24px; margin-bottom: 8px;">🔍</div>
+            <p>Für diesen Request wurde kein RAW-Paket gespeichert.</p>
+            <p style="font-size: 12px; max-width: 480px; margin: 0 auto; color: var(--text-muted);">
+              Aktiviere oben rechts den <strong>DEBUG-Modus</strong> ("DEBUG: AKTIV"), um für zukünftige Anfragen vollständige Pakete inklusive Attribut-Decodes und Hex-Dumps aufzuzeichnen.
+            </p>
+          </div>
+        `;
+      }
+
+      // Render Response RAW Tab
+      if (log.raw_response) {
+        contentRawResp.innerHTML = `
+          <div style="margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 12px; font-weight: 600; color: var(--text-dim);">Ausgehendes RADIUS-Paket (Decoded & Hex Dump):</span>
+            <button class="btn btn-secondary btn-sm" onclick="copyRawDump('resp')" style="font-size: 11px; padding: 2px 8px;">Kopieren</button>
+          </div>
+          <div class="raw-dump-box" id="rawDumpResp">${log.raw_response}</div>
+        `;
+      } else {
+        contentRawResp.innerHTML = `
+          <div style="text-align: center; padding: 36px 16px; color: var(--text-dim);">
+            <div style="font-size: 24px; margin-bottom: 8px;">🔍</div>
+            <p>Für diesen Response wurde kein RAW-Paket gespeichert.</p>
+            <p style="font-size: 12px; max-width: 480px; margin: 0 auto; color: var(--text-muted);">
+              Aktiviere oben rechts den <strong>DEBUG-Modus</strong> ("DEBUG: AKTIV"), um Antworten mit Hex-Dump aufzuzeichnen.
+            </p>
+          </div>
+        `;
+      }
+
+      switchModalTab('overview');
+    })
+    .catch(err => {
+      loading.innerHTML = `<div style="color: var(--error);">Fehler beim Laden der Details: ${err.message}</div>`;
+    });
+}
+
+function closeRadiusDetailsModal() {
+  const modal = document.getElementById('radiusDetailsModal');
+  if (modal) modal.style.display = 'none';
+  currentModalLog = null;
+}
+
+function switchModalTab(tab) {
+  const tabBtnOverview = document.getElementById('tabBtnOverview');
+  const tabBtnRawReq = document.getElementById('tabBtnRawReq');
+  const tabBtnRawResp = document.getElementById('tabBtnRawResp');
+  const contentOverview = document.getElementById('tabContentOverview');
+  const contentRawReq = document.getElementById('tabContentRawReq');
+  const contentRawResp = document.getElementById('tabContentRawResp');
+
+  if (tabBtnOverview) tabBtnOverview.classList.toggle('active', tab === 'overview');
+  if (tabBtnRawReq) tabBtnRawReq.classList.toggle('active', tab === 'rawReq');
+  if (tabBtnRawResp) tabBtnRawResp.classList.toggle('active', tab === 'rawResp');
+
+  if (contentOverview) contentOverview.style.display = tab === 'overview' ? 'block' : 'none';
+  if (contentRawReq) contentRawReq.style.display = tab === 'rawReq' ? 'block' : 'none';
+  if (contentRawResp) contentRawResp.style.display = tab === 'rawResp' ? 'block' : 'none';
+}
+
+function copyRawDump(type) {
+  const box = document.getElementById(type === 'req' ? 'rawDumpReq' : 'rawDumpResp');
+  if (!box) return;
+  navigator.clipboard.writeText(box.textContent).then(() => {
+    alert('RAW-Dump in die Zwischenablage kopiert!');
+  });
+}
+
+// Close modal when pressing Escape or clicking outside
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeRadiusDetailsModal();
+});
+document.getElementById('radiusDetailsModal')?.addEventListener('click', function(e) {
+  if (e.target === this) closeRadiusDetailsModal();
+});
+
+// WebSocket Terminal & Live Feed Hook
 document.body.addEventListener('htmx:wsAfterMessage', function(e) {
   const term = document.getElementById('terminalConsole');
-  if (!term) return;
+  if (term) {
+    const lastLine = term.lastElementChild;
+    if (lastLine && lastLine.classList.contains('terminal-line')) {
+      if (isPaused) {
+        lastLine.classList.add('log-hidden', 'log-paused-buffered');
+        pausedLinesCount++;
+        const btn = document.getElementById('pauseStreamBtn');
+        if (btn) {
+          btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> {{tr .Lang "logs.btn_resume"}} (${pausedLinesCount})`;
+        }
+      } else {
+        const searchVal = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
+        const lvl = (lastLine.getAttribute('data-level') || '').toUpperCase();
+        const src = (lastLine.getAttribute('data-source') || '').toLowerCase();
+        const text = (lastLine.textContent || '').toLowerCase();
 
-  // Find newly inserted line
-  const lastLine = term.lastElementChild;
-  if (!lastLine || !lastLine.classList.contains('terminal-line')) return;
+        let match = true;
+        if (activeLevel && lvl !== activeLevel) match = false;
+        if (activeSource && !src.includes(activeSource)) match = false;
+        if (searchVal && !text.includes(searchVal)) match = false;
 
-  if (isPaused) {
-    lastLine.classList.add('log-hidden', 'log-paused-buffered');
-    pausedLinesCount++;
-    const btn = document.getElementById('pauseStreamBtn');
-    if (btn) {
-      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> {{tr .Lang "logs.btn_resume"}} (${pausedLinesCount})`;
+        if (match) {
+          lastLine.classList.remove('log-hidden');
+          if (autoScroll) {
+            term.scrollTop = term.scrollHeight;
+          }
+        } else {
+          lastLine.classList.add('log-hidden');
+        }
+        updateLogStats();
+      }
     }
-    return;
   }
 
-  // Check if line matches active filters
-  const searchVal = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
-  const lvl = (lastLine.getAttribute('data-level') || '').toUpperCase();
-  const src = (lastLine.getAttribute('data-source') || '').toLowerCase();
-  const text = (lastLine.textContent || '').toLowerCase();
-
-  let match = true;
-  if (activeLevel && lvl !== activeLevel) match = false;
-  if (activeSource && !src.includes(activeSource)) match = false;
-  if (searchVal && !text.includes(searchVal)) match = false;
-
-  if (match) {
-    lastLine.classList.remove('log-hidden');
-    if (autoScroll) {
-      term.scrollTop = term.scrollHeight;
-    }
-  } else {
-    lastLine.classList.add('log-hidden');
+  // Remove empty placeholder from history table if a live row was prepended
+  const emptyPlaceholder = document.getElementById('empty-feed-placeholder');
+  const histTbody = document.getElementById('history-feed-rows');
+  if (emptyPlaceholder && histTbody && histTbody.children.length > 1) {
+    emptyPlaceholder.remove();
   }
-
-  updateLogStats();
 });
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
   applyLogFilters();
+  const term = document.getElementById('terminalConsole');
+  if (term && autoScroll) {
+    term.scrollTop = term.scrollHeight;
+  }
 });
 </script>
 {{end}}

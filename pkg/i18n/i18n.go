@@ -173,9 +173,10 @@ var translations = map[string]map[string]string{
 		"logs.btn_export":        "Exportieren",
 		"logs.filter_active":     "Filter aktiv",
 		"logs.btn_reset":         "Zurücksetzen",
-		"logs.hist_title":        "Audit-Historie (SQLite)",
+		"logs.hist_title":        "RADIUS Request Historie",
 		"logs.hist_subtitle":     "Dauerhaft gespeicherte Authentifizierungsanfragen (Vorhaltezeit: %d Tage)",
-		"logs.search_ph":         "Filter nach MAC oder User...",
+		"logs.search_ph":         "Suche nach MAC, Benutzer, Gerät, IP, Grund...",
+		"logs.btn_export_csv":    "CSV Export",
 		"logs.filter_all":        "Alle Ergebnisse",
 		"logs.filter_accept":     "Nur ACCEPT",
 		"logs.filter_reject":     "Nur REJECT",
@@ -183,6 +184,7 @@ var translations = map[string]map[string]string{
 		"logs.th_client":         "Client Identifier",
 		"logs.th_details":        "Details & Grund",
 		"logs.th_nas":            "NAS IP & Port",
+		"logs.th_actions":        "Aktionen",
 		"logs.empty_logs":        "Keine passenden Audit-Logs gefunden.",
 
 		// Settings
@@ -476,9 +478,10 @@ var translations = map[string]map[string]string{
 		"logs.btn_export":        "Export",
 		"logs.filter_active":     "Filter active",
 		"logs.btn_reset":         "Reset",
-		"logs.hist_title":        "Audit History (SQLite)",
+		"logs.hist_title":        "RADIUS Request History",
 		"logs.hist_subtitle":     "Permanently stored authentication requests (Retention: %d days)",
-		"logs.search_ph":         "Filter by MAC or user...",
+		"logs.search_ph":         "Search by MAC, user, device, IP, reason...",
+		"logs.btn_export_csv":    "CSV Export",
 		"logs.filter_all":        "All Results",
 		"logs.filter_accept":     "ACCEPT Only",
 		"logs.filter_reject":     "REJECT Only",
@@ -486,6 +489,7 @@ var translations = map[string]map[string]string{
 		"logs.th_client":         "Client Identifier",
 		"logs.th_details":        "Details & Reason",
 		"logs.th_nas":            "NAS IP & Port",
+		"logs.th_actions":        "Actions",
 		"logs.empty_logs":        "No matching audit logs found.",
 
 		// Settings

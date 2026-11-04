@@ -146,8 +146,9 @@ func (bw *BatchWriter) flushLogs(batch []*models.AuthLog) {
 	stmt, err := tx.Prepare(`
 		INSERT INTO auth_logs (
 			timestamp, client_mac, username, nas_ip, nas_port, auth_type,
-			status, vlan_id, reason, latency_ms, enriched_name, enriched_vendor
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			status, vlan_id, reason, latency_ms, enriched_name, enriched_vendor,
+			raw_request, raw_response
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`)
 	if err != nil {
 		return
@@ -158,6 +159,7 @@ func (bw *BatchWriter) flushLogs(batch []*models.AuthLog) {
 		_, _ = stmt.Exec(
 			l.Timestamp.UTC(), l.ClientMAC, l.Username, l.NASIP, l.NASPort, string(l.AuthType),
 			l.Status, l.VLANID, l.Reason, l.LatencyMS, l.EnrichedName, l.EnrichedVendor,
+			l.RawRequest, l.RawResponse,
 		)
 	}
 

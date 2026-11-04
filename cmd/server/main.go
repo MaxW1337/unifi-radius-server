@@ -123,6 +123,9 @@ func main() {
 
 	// 5. Initialize RADIUS Engine
 	radiusSrv := radius.NewServer(db, bus, radiusPort)
+	if settings.RadiusDebugMode {
+		radiusSrv.SetDebugMode(true)
+	}
 
 	// 6. Initialize Web Interface & Notification Service
 	webSrv, err := web.NewServer(db, bus, syncSvc, webPort, Version)

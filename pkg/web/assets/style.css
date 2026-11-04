@@ -523,6 +523,75 @@ tr:hover td {
 .terminal-lvl-info { color: #10b981; }
 .terminal-lvl-warn { color: #f59e0b; }
 .terminal-lvl-error { color: #ef4444; }
+.terminal-lvl-debug { color: #38bdf8; font-weight: 600; }
+
+.terminal-msg {
+  white-space: pre-wrap;
+  word-break: break-all;
+  flex: 1;
+}
+
+.terminal-pre {
+  margin: 2px 0 0 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #94a3b8;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 3px solid #38bdf8;
+  flex: 1;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.pulse-indicator {
+  animation: pulse-dot 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.85); }
+}
+
+.modal-tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.modal-tab-btn:hover {
+  color: var(--text-main);
+}
+
+.modal-tab-btn.active {
+  color: var(--unifi-blue);
+  border-bottom-color: var(--unifi-blue);
+}
+
+.raw-dump-box {
+  background: #030712;
+  border: 1px solid #1f2937;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: #cbd5e1;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow-y: auto;
+}
 
 .terminal-line.log-hidden {
   display: none !important;

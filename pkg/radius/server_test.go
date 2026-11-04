@@ -424,3 +424,84 @@ func TestServerPortConflictAndRetryBinding(t *testing.T) {
 	}
 }
 
+func TestPacketFormatDebug(t *testing.T) {
+	req := &Packet{
+		Code:       CodeAccessRequest,
+		Identifier: 77,
+	}
+	_, _ = rand.Read(req.Authenticator[:])
+	req.AddString(AttrUserName, "test-user-debug")
+	req.AddString(AttrCallingStationID, "AA-BB-CC-DD-EE-FF")
+	portBytes := make([]byte, 4)
+	portBytes[3] = 42
+	req.AddAttribute(AttrNASPort, portBytes)
+
+	secret := []byte("testing123")
+	rawBytes, err := req.Encode(secret)
+	if err != nil {
+		t.Fatalf("Encode failed: %v", err)
+	}
+
+	debugOutput := req.FormatDebug(rawBytes)
+	if debugOutput == "" {
+		t.Fatal("FormatDebug returned empty string")
+	}
+
+	// Verify it contains Code Name, ID, Attribute Names, Values, and Hex Dump
+	expectedSubstrings := []string{
+		"Access-Request",
+		"ID: 77",
+		"User-Name",
+		"test-user-debug",
+		"Calling-Station-Id",
+		"AA-BB-CC-DD-EE-FF",
+		"NAS-Port",
+		"Hex Dump:",
+	}
+
+	for _, sub := range expectedSubstrings {
+		if !contains(debugOutput, sub) {
+			t.Errorf("FormatDebug output missing expected substring: %q\nOutput:\n%s", sub, debugOutput)
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 || (len(s) > 0 && len(substr) > 0 && findSubstr(s, substr)))
+}
+
+func findSubstr(s, substr string) bool {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
+
+func TestServerDebugModeToggle(t *testing.T) {
+	tmpDir := t.TempDir()
+	db, err := database.Open(filepath.Join(tmpDir, "radius_debug.db"))
+	if err != nil {
+		t.Fatalf("Failed to open test db: %v", err)
+	}
+	defer db.Close()
+
+	bus := eventbus.NewBus(10)
+	srv := NewServer(db, bus, 18129)
+
+	if srv.IsDebugMode() {
+		t.Errorf("Expected debugMode default false, got true")
+	}
+
+	srv.SetDebugMode(true)
+	if !srv.IsDebugMode() {
+		t.Errorf("Expected debugMode true, got false")
+	}
+
+	srv.SetDebugMode(false)
+	if srv.IsDebugMode() {
+		t.Errorf("Expected debugMode false, got true")
+	}
+}
+

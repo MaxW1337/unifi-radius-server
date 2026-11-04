@@ -134,7 +134,9 @@ func (db *DB) migrate() error {
 		reason TEXT NOT NULL,
 		latency_ms REAL DEFAULT 0,
 		enriched_name TEXT DEFAULT '',
-		enriched_vendor TEXT DEFAULT ''
+		enriched_vendor TEXT DEFAULT '',
+		raw_request TEXT DEFAULT '',
+		raw_response TEXT DEFAULT ''
 	);
 
 	CREATE INDEX IF NOT EXISTS idx_auth_logs_timestamp ON auth_logs(timestamp);
@@ -151,6 +153,8 @@ func (db *DB) migrate() error {
 	// Dynamic column migrations for existing databases
 	_, _ = db.Exec("ALTER TABLE clients ADD COLUMN unifi_switch_mac TEXT DEFAULT '';")
 	_, _ = db.Exec("ALTER TABLE clients ADD COLUMN unifi_is_wired BOOLEAN DEFAULT 0;")
+	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN raw_request TEXT DEFAULT '';")
+	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN raw_response TEXT DEFAULT '';")
 
 	return nil
 }
@@ -161,6 +165,7 @@ func (db *DB) seedDefaults() error {
 		"unknown_mab_policy":   "reject_log",
 		"global_shared_secret": "radius_secret_changeme",
 		"radius_auth_port":     "1812",
+		"radius_debug_mode":    "false",
 		"web_port":             "9182",
 		"unifi_url":            "https://127.0.0.1",
 		"unifi_auth_mode":      "apikey",

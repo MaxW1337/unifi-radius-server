@@ -103,6 +103,7 @@ func (db *DB) GetSettings() (*models.Settings, error) {
 		UnknownMABPolicy:   policy,
 		GlobalSharedSecret: sMap["global_shared_secret"],
 		RADIUSAuthPort:     radPort,
+		RadiusDebugMode:    sMap["radius_debug_mode"] == "true",
 		WebPort:            webPort,
 		WebAdminPassword:   sMap["web_admin_password"],
 		UniFiURL:           sMap["unifi_url"],
@@ -153,6 +154,7 @@ func (db *DB) UpdateSettings(s *models.Settings) error {
 		"unknown_mab_policy":   string(s.UnknownMABPolicy),
 		"global_shared_secret": s.GlobalSharedSecret,
 		"radius_auth_port":     strconv.Itoa(s.RADIUSAuthPort),
+		"radius_debug_mode":    strconv.FormatBool(s.RadiusDebugMode),
 		"web_port":             strconv.Itoa(s.WebPort),
 		"unifi_url":            s.UniFiURL,
 		"unifi_auth_mode":      s.UniFiAuthMode,
@@ -247,6 +249,17 @@ func (db *DB) SetAdminPassword(hashedPassword string) error {
 		VALUES ('web_admin_password', ?, ?)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
 	`, hashedPassword, time.Now().UTC())
+	return err
+}
+
+// SetRadiusDebugMode enables or disables raw RADIUS packet debugging in settings.
+func (db *DB) SetRadiusDebugMode(enabled bool) error {
+	val := strconv.FormatBool(enabled)
+	_, err := db.Exec(`
+		INSERT INTO settings (key, value, updated_at) 
+		VALUES ('radius_debug_mode', ?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+	`, val, time.Now().UTC())
 	return err
 }
 

@@ -122,3 +122,12 @@ func (b *Bus) PublishLog(event LogEvent) {
 	}
 }
 
+// GetRecentLogs returns a shallow copy of recently broadcast log events for initial page rendering.
+func (b *Bus) GetRecentLogs() []LogEvent {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	res := make([]LogEvent, len(b.recentLogs))
+	copy(res, b.recentLogs)
+	return res
+}
+

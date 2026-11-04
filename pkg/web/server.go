@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"embed"
+	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -158,6 +159,9 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 		"tr": func(lang, key string, args ...any) string {
 			return i18n.T(lang, key, args...)
 		},
+		"containsNewline": func(s string) bool {
+			return strings.Contains(s, "\n")
+		},
 	}
 
 	pages := make(map[string]*template.Template)
@@ -261,6 +265,9 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 	mux.HandleFunc("/certificates/download-mobileconfig", s.requireAuth(s.handleDownloadMobileConfig))
 
 	mux.HandleFunc("/logs", s.requireAuth(s.handleLogs))
+	mux.HandleFunc("/api/radius/debug/toggle", s.requireAuth(s.handleToggleDebugMode))
+	mux.HandleFunc("/api/logs/export/csv", s.requireAuth(s.handleExportLogsCSV))
+	mux.HandleFunc("/api/logs/auth/details", s.requireAuth(s.handleAuthLogDetails))
 
 	mux.HandleFunc("/settings", s.requireAuth(s.handleSettings))
 	mux.HandleFunc("/settings/save", s.requireAuth(s.csrfProtect(s.handleSaveSettings)))
@@ -1139,21 +1146,152 @@ func (s *Server) handleDownloadMobileConfig(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
-	macFilter := r.URL.Query().Get("mac")
-	statusFilter := r.URL.Query().Get("status")
-	logs, _, _ := s.db.ListAuthLogs(100, 0, statusFilter, macFilter)
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	if q == "" {
+		q = strings.TrimSpace(r.URL.Query().Get("mac"))
+	}
+	statusFilter := strings.TrimSpace(r.URL.Query().Get("status"))
+
+	logs, total, _ := s.db.ListAuthLogs(100, 0, statusFilter, q)
 	settings, _ := s.db.GetSettings()
 
+	debugMode := false
+	if s.radiusSrv != nil {
+		debugMode = s.radiusSrv.IsDebugMode()
+	} else if settings != nil {
+		debugMode = settings.RadiusDebugMode
+	}
+
+	initialLogs := s.bus.GetRecentLogs()
+
 	data := map[string]interface{}{
-		"Title":         "Live Logs & Audit",
-		"PageTitle":     "Live Logs & Audit Historie",
+		"Title":         "RADIUS Historie & Live Logs",
+		"PageTitle":     "RADIUS Request Historie & Live Logs",
 		"ActiveNav":     "logs",
 		"Logs":          logs,
+		"TotalLogs":     total,
 		"RetentionDays": settings.LogRetentionDays,
-		"MACFilter":     macFilter,
+		"QueryFilter":   q,
+		"MACFilter":     q,
 		"StatusFilter":  statusFilter,
+		"DebugMode":     debugMode,
+		"InitialLogs":   initialLogs,
 	}
 	s.renderPage(w, r, "logs.html", data)
+}
+
+func (s *Server) handleToggleDebugMode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	settings, err := s.db.GetSettings()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	newMode := !settings.RadiusDebugMode
+	if err := s.db.SetRadiusDebugMode(newMode); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if s.radiusSrv != nil {
+		s.radiusSrv.SetDebugMode(newMode)
+	}
+
+	statusMsg := "aktiviert"
+	if !newMode {
+		statusMsg = "deaktiviert"
+	}
+	s.bus.PublishLog(eventbus.LogEvent{
+		Timestamp: time.Now().Format("15:04:05"),
+		Level:     eventbus.LogLevelInfo,
+		Source:    "RADIUS",
+		Message:   fmt.Sprintf("RADIUS Debug-Modus (RAW Packet Inspection) wurde %s.", statusMsg),
+	})
+
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if newMode {
+			fmt.Fprint(w, `<button type="button" class="btn btn-warning btn-sm" hx-post="/api/radius/debug/toggle" hx-target="#debug-mode-btn-container" hx-swap="outerHTML" id="debug-mode-btn-container" title="Klicken zum Deaktivieren">
+				<span class="pulse-indicator" style="background:#f59e0b; width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:4px;"></span>
+				DEBUG: AKTIV
+			</button>`)
+		} else {
+			fmt.Fprint(w, `<button type="button" class="btn btn-secondary btn-sm" hx-post="/api/radius/debug/toggle" hx-target="#debug-mode-btn-container" hx-swap="outerHTML" id="debug-mode-btn-container" title="Klicken zum Aktivieren">
+				<span style="opacity:0.5; margin-right:4px;">🐛</span>
+				DEBUG: Aus
+			</button>`)
+		}
+		return
+	}
+
+	http.Redirect(w, r, "/logs", http.StatusSeeOther)
+}
+
+func (s *Server) handleExportLogsCSV(w http.ResponseWriter, r *http.Request) {
+	statusFilter := r.URL.Query().Get("status")
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		query = r.URL.Query().Get("mac")
+	}
+
+	logs, _, err := s.db.ListAuthLogs(1000, 0, statusFilter, query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"radius-history-%s.csv\"", time.Now().Format("2006-01-02-150405")))
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	_ = writer.Write([]string{"ID", "Timestamp", "Status", "ClientMAC", "Username", "AuthType", "VLAN", "Reason", "NASIP", "NASPort", "LatencyMS", "EnrichedName", "EnrichedVendor"})
+
+	for _, l := range logs {
+		vlanStr := ""
+		if l.VLANID != nil {
+			vlanStr = strconv.Itoa(*l.VLANID)
+		}
+		_ = writer.Write([]string{
+			strconv.FormatInt(l.ID, 10),
+			l.Timestamp.Format(time.RFC3339),
+			l.Status,
+			l.ClientMAC,
+			l.Username,
+			string(l.AuthType),
+			vlanStr,
+			l.Reason,
+			l.NASIP,
+			l.NASPort,
+			fmt.Sprintf("%.2f", l.LatencyMS),
+			l.EnrichedName,
+			l.EnrichedVendor,
+		})
+	}
+}
+
+func (s *Server) handleAuthLogDetails(w http.ResponseWriter, r *http.Request) {
+	idStr := r.URL.Query().Get("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "Invalid ID", http.StatusBadRequest)
+		return
+	}
+
+	logEntry, err := s.db.GetAuthLogByID(id)
+	if err != nil {
+		http.Error(w, "Log not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(logEntry)
 }
 
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
@@ -1198,6 +1336,10 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		settings.DefaultAllowVLAN = defVLAN
 	}
 	settings.UnknownMABPolicy = models.UnknownMABPolicy(r.FormValue("unknown_mab_policy"))
+	settings.RadiusDebugMode = r.FormValue("radius_debug_mode") == "1" || r.FormValue("radius_debug_mode") == "on"
+	if s.radiusSrv != nil {
+		s.radiusSrv.SetDebugMode(settings.RadiusDebugMode)
+	}
 
 	if wPort, err := strconv.Atoi(r.FormValue("web_port")); err == nil && wPort > 0 {
 		settings.WebPort = wPort
@@ -1764,6 +1906,7 @@ func formatAuthRowHTML(a models.AuthLog) string {
 
 	tsRFC := a.Timestamp.Format(time.RFC3339)
 	tsFallback := a.Timestamp.Format("15:04:05")
+	tsHistFallback := a.Timestamp.Format("02.01. 15:04:05")
 
 	vlanStr := ""
 	if a.VLANID != nil {
@@ -1777,12 +1920,19 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		latencyClass = "latency-normal"
 	}
 
-	// Uses hx-swap-oob="afterbegin" on #live-feed-rows
-	return fmt.Sprintf(`
+	enrichedInfo := ""
+	if a.EnrichedName != "" {
+		enrichedInfo = fmt.Sprintf(`<div style="color: var(--text-dim); font-size: 11px;">%s %s</div>`,
+			template.HTMLEscapeString(a.EnrichedName),
+			template.HTMLEscapeString(a.EnrichedVendor),
+		)
+	}
+
+	liveRow := fmt.Sprintf(`
 	<tr id="live-feed-rows" hx-swap-oob="afterbegin" data-status="%s" data-ident="%s" data-vlan="%s">
 		<td style="color: var(--text-dim); font-size: 12px;"><time class="local-time" datetime="%s" data-format="time">%s</time></td>
 		<td>%s</td>
-		<td><span class="code-pill copyable" onclick="copyToClipboard('%s', this)" title="Kopieren">%s</span></td>
+		<td><span class="code-pill copyable" onclick="copyToClipboard('%s', this, 'MAC')" title="Kopieren">%s</span></td>
 		<td>%s</td>
 		<td>
 			<div><strong>%s</strong></div>
@@ -1793,8 +1943,7 @@ func formatAuthRowHTML(a models.AuthLog) string {
 			<div style="font-size: 11px; color: var(--text-dim);">Port %s</div>
 		</td>
 		<td style="font-size: 12px;"><span class="latency-pill %s">%.1f ms</span></td>
-	</tr>
-	`,
+	</tr>`,
 		template.HTMLEscapeString(a.Status),
 		template.HTMLEscapeString(strings.ToLower(ident)),
 		template.HTMLEscapeString(vlanStr),
@@ -1811,17 +1960,65 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		template.HTMLEscapeString(latencyClass),
 		a.LatencyMS,
 	)
+
+	histRow := fmt.Sprintf(`
+	<tr id="history-feed-rows" hx-swap-oob="afterbegin" data-status="%s" data-id="%d">
+		<td style="color: var(--text-dim); font-size: 12px;"><time class="local-time" datetime="%s" data-format="datetime">%s</time></td>
+		<td>%s</td>
+		<td><span class="code-pill copyable" onclick="copyToClipboard('%s', this, 'MAC')" title="Kopieren">%s</span></td>
+		<td>%s</td>
+		<td style="font-size: 12px;">
+			<div><strong>%s</strong></div>
+			%s
+		</td>
+		<td style="color: var(--text-muted); font-size: 12px;">%s:%s</td>
+		<td><span class="latency-pill %s">%.1f ms</span></td>
+		<td style="text-align: right;">
+			<button type="button" class="btn btn-secondary btn-sm" onclick="openRadiusDetailsModal(%d)" style="padding: 3px 8px; font-size: 11px;">
+				<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 3px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
+				Details / RAW
+			</button>
+		</td>
+	</tr>`,
+		template.HTMLEscapeString(a.Status),
+		a.ID,
+		template.HTMLEscapeString(tsRFC),
+		template.HTMLEscapeString(tsHistFallback),
+		statusBadge,
+		template.HTMLEscapeString(ident),
+		template.HTMLEscapeString(ident),
+		vlanBadge,
+		template.HTMLEscapeString(a.Reason),
+		enrichedInfo,
+		template.HTMLEscapeString(a.NASIP),
+		template.HTMLEscapeString(a.NASPort),
+		template.HTMLEscapeString(latencyClass),
+		a.LatencyMS,
+		a.ID,
+	)
+
+	return liveRow + "\n" + histRow
 }
 
 func formatLogLineHTML(l eventbus.LogEvent) string {
 	lvlClass := "terminal-lvl-info"
-	if l.Level == eventbus.LogLevelWarn {
+	switch l.Level {
+	case eventbus.LogLevelDebug:
+		lvlClass = "terminal-lvl-debug"
+	case eventbus.LogLevelWarn:
 		lvlClass = "terminal-lvl-warn"
-	} else if l.Level == eventbus.LogLevelError {
+	case eventbus.LogLevelError:
 		lvlClass = "terminal-lvl-error"
 	}
 
 	nowRFC := time.Now().UTC().Format(time.RFC3339)
+
+	var msgHTML string
+	if strings.Contains(l.Message, "\n") {
+		msgHTML = fmt.Sprintf("<pre class=\"terminal-pre\">%s</pre>", template.HTMLEscapeString(l.Message))
+	} else {
+		msgHTML = fmt.Sprintf("<span class=\"terminal-msg\">%s</span>", template.HTMLEscapeString(l.Message))
+	}
 
 	// Uses hx-swap-oob="beforeend" on #terminalConsole
 	return fmt.Sprintf(`
@@ -1830,7 +2027,7 @@ func formatLogLineHTML(l eventbus.LogEvent) string {
 			<span class="terminal-ts">[<time class="local-time" datetime="%s" data-format="time">%s</time>]</span>
 			<span class="terminal-src">[%s]</span>
 			<span class="%s">[%s]</span>
-			<span class="terminal-msg">%s</span>
+			%s
 		</div>
 	</div>
 	`,
@@ -1841,7 +2038,7 @@ func formatLogLineHTML(l eventbus.LogEvent) string {
 		template.HTMLEscapeString(l.Source),
 		template.HTMLEscapeString(lvlClass),
 		template.HTMLEscapeString(string(l.Level)),
-		template.HTMLEscapeString(l.Message),
+		msgHTML,
 	)
 }
 

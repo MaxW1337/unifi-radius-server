@@ -112,6 +112,8 @@ type AuthLog struct {
 	LatencyMS      float64   `json:"latency_ms"`
 	EnrichedName   string    `json:"enriched_name,omitempty"`
 	EnrichedVendor string    `json:"enriched_vendor,omitempty"`
+	RawRequest     string    `json:"raw_request,omitempty"`
+	RawResponse    string    `json:"raw_response,omitempty"`
 }
 
 // Settings represents global system configuration.
@@ -120,6 +122,7 @@ type Settings struct {
 	UnknownMABPolicy   UnknownMABPolicy `json:"unknown_mab_policy"`
 	GlobalSharedSecret string           `json:"global_shared_secret"`
 	RADIUSAuthPort     int              `json:"radius_auth_port"`
+	RadiusDebugMode    bool             `json:"radius_debug_mode"`
 	WebPort            int              `json:"web_port"`
 	WebAdminPassword   string           `json:"-"`
 	UniFiURL           string           `json:"unifi_url"`

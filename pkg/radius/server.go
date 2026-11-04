@@ -47,6 +47,7 @@ type Server struct {
 	wg          sync.WaitGroup
 	mu          sync.RWMutex
 	listening   bool
+	debugMode   bool
 }
 
 // NewServer initializes a high-concurrency RADIUS server instance.
@@ -89,6 +90,20 @@ func NewServer(db *database.DB, bus *eventbus.Bus, port int) *Server {
 // ReloadCache instructs the in-memory cache to refresh from SQLite.
 func (s *Server) ReloadCache() error {
 	return s.cache.Reload()
+}
+
+// SetDebugMode enables or disables real-time raw packet debugging and hex dumps.
+func (s *Server) SetDebugMode(enabled bool) {
+	s.mu.Lock()
+	s.debugMode = enabled
+	s.mu.Unlock()
+}
+
+// IsDebugMode returns whether raw packet debugging is currently active.
+func (s *Server) IsDebugMode() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.debugMode
 }
 
 // Start opens the UDP listener with enlarged kernel buffers and spawns the worker pool.
@@ -287,6 +302,18 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 
 	// 1. Resolve Settings & NAS Client from Fast RAM Cache (zero DB query)
 	settings := s.cache.GetSettings()
+	debugActive := s.IsDebugMode() || settings.RadiusDebugMode
+	rawReqDebug := req.FormatDebug(data)
+
+	if debugActive {
+		s.bus.PublishLog(eventbus.LogEvent{
+			Timestamp: time.Now().Format("15:04:05"),
+			Level:     eventbus.LogLevelDebug,
+			Source:    "RADIUS-RAW",
+			Message:   fmt.Sprintf("<<< RECV %s from %s (ID:%d, len:%d)\n%s", req.CodeName(), remoteAddr, req.Identifier, len(data), rawReqDebug),
+		})
+	}
+
 	remoteIP := remoteAddr.IP.String()
 
 	nas, found := s.cache.LookupNAS(remoteIP)
@@ -490,7 +517,17 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 
 	// 3. Send Response IMMEDIATELY to Switch/AP (Fast Path)
 	respBytes, err := respPacket.Encode(secretBytes)
+	rawRespDebug := ""
 	if err == nil {
+		rawRespDebug = respPacket.FormatDebug(respBytes)
+		if debugActive {
+			s.bus.PublishLog(eventbus.LogEvent{
+				Timestamp: time.Now().Format("15:04:05"),
+				Level:     eventbus.LogLevelDebug,
+				Source:    "RADIUS-RAW",
+				Message:   fmt.Sprintf(">>> SENT %s to %s (ID:%d, len:%d)\n%s", respPacket.CodeName(), remoteAddr, respPacket.Identifier, len(respBytes), rawRespDebug),
+			})
+		}
 		_, _ = s.conn.WriteToUDP(respBytes, remoteAddr)
 	} else {
 		log.Printf("[RADIUS] Failed to encode response: %v", err)
@@ -510,6 +547,8 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 		LatencyMS:      latency,
 		EnrichedName:   enrichedName,
 		EnrichedVendor: enrichedVendor,
+		RawRequest:     rawReqDebug,
+		RawResponse:    rawRespDebug,
 	}
 
 	// Enqueue to batch writer (non-blocking, flushed in bulk)

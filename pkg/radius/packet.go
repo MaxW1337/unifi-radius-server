@@ -5,8 +5,12 @@ import (
 	"crypto/hmac"
 	"crypto/md5"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"net"
 	"strconv"
+	"strings"
 )
 
 // RADIUS Packet Codes
@@ -273,4 +277,122 @@ func ValidateMessageAuthenticator(raw []byte, secret []byte) bool {
 	expected := mac.Sum(nil)
 
 	return hmac.Equal(originalAuth, expected)
+}
+
+// CodeName returns the human-readable standard name for a RADIUS packet code.
+func (p *Packet) CodeName() string {
+	switch p.Code {
+	case CodeAccessRequest:
+		return "Access-Request (1)"
+	case CodeAccessAccept:
+		return "Access-Accept (2)"
+	case CodeAccessReject:
+		return "Access-Reject (3)"
+	case CodeAccountingReq:
+		return "Accounting-Request (4)"
+	case CodeAccountingResp:
+		return "Accounting-Response (5)"
+	case CodeAccessChallenge:
+		return "Access-Challenge (11)"
+	default:
+		return fmt.Sprintf("Code-%d", p.Code)
+	}
+}
+
+// AttributeName returns the human-readable name of standard RADIUS attribute types.
+func AttributeName(attrType byte) string {
+	switch attrType {
+	case AttrUserName:
+		return "User-Name"
+	case AttrUserPassword:
+		return "User-Password"
+	case AttrNASIPAddress:
+		return "NAS-IP-Address"
+	case AttrNASPort:
+		return "NAS-Port"
+	case AttrServiceType:
+		return "Service-Type"
+	case AttrFramedIPAddress:
+		return "Framed-IP-Address"
+	case AttrReplyMessage:
+		return "Reply-Message"
+	case AttrCalledStationID:
+		return "Called-Station-Id"
+	case AttrCallingStationID:
+		return "Calling-Station-Id"
+	case AttrNASIdentifier:
+		return "NAS-Identifier"
+	case 61: // AttrNASPortType
+		return "NAS-Port-Type"
+	case AttrTunnelType:
+		return "Tunnel-Type"
+	case AttrTunnelMediumType:
+		return "Tunnel-Medium-Type"
+	case AttrTunnelPreference:
+		return "Tunnel-Preference"
+	case AttrTunnelPrivateGroupID:
+		return "Tunnel-Private-Group-Id"
+	case AttrEAPMessage:
+		return "EAP-Message"
+	case AttrMessageAuthenticator:
+		return "Message-Authenticator"
+	case 87:
+		return "NAS-Port-Id"
+	default:
+		return fmt.Sprintf("Attr-%d", attrType)
+	}
+}
+
+// FormatValue returns a human-friendly representation of an attribute value.
+func FormatValue(attrType byte, val []byte) string {
+	switch attrType {
+	case AttrUserName, AttrCallingStationID, AttrCalledStationID, AttrNASIdentifier, AttrTunnelPrivateGroupID, AttrReplyMessage, 87:
+		return string(val)
+	case AttrNASIPAddress, AttrFramedIPAddress:
+		if len(val) == 4 {
+			return net.IP(val).String()
+		}
+	case AttrNASPort, AttrServiceType, 61: // 32-bit uints
+		if len(val) == 4 {
+			return fmt.Sprintf("%d", binary.BigEndian.Uint32(val))
+		}
+	case AttrTunnelType, AttrTunnelMediumType:
+		if len(val) == 4 {
+			return fmt.Sprintf("%d (Tag:%d)", binary.BigEndian.Uint32(val)&0x00FFFFFF, val[0])
+		}
+	case AttrUserPassword:
+		return "[Obfuscated/Encrypted]"
+	case AttrMessageAuthenticator:
+		return fmt.Sprintf("0x%x (16 bytes)", val)
+	}
+	// Fallback: check printable ASCII
+	isPrintable := true
+	for _, b := range val {
+		if b < 32 || b > 126 {
+			isPrintable = false
+			break
+		}
+	}
+	if isPrintable && len(val) > 0 {
+		return string(val)
+	}
+	return fmt.Sprintf("0x%x (%d bytes)", val, len(val))
+}
+
+// FormatDebug returns a structured breakdown of the packet including decoded attributes and hex dump.
+func (p *Packet) FormatDebug(rawBytes []byte) string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("%s | ID: %d | Attrs: %d | Len: %d bytes\n", p.CodeName(), p.Identifier, len(p.Attributes), len(rawBytes)))
+	sb.WriteString(fmt.Sprintf("Authenticator: %x\n", p.Authenticator))
+	sb.WriteString("Attributes:\n")
+	for i, a := range p.Attributes {
+		name := AttributeName(a.Type)
+		val := FormatValue(a.Type, a.Value)
+		sb.WriteString(fmt.Sprintf("  [%02d] %-24s (Type %2d, Len %2d): %s\n", i+1, name, a.Type, len(a.Value)+2, val))
+	}
+	if len(rawBytes) > 0 {
+		sb.WriteString("Hex Dump:\n")
+		sb.WriteString(hex.Dump(rawBytes))
+	}
+	return sb.String()
 }

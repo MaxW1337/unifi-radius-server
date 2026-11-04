@@ -181,6 +181,18 @@
             <option value="reject_log" {{if eq .Settings.UnknownMABPolicy "reject_log"}}selected{{end}}>{{tr .Lang "settings.opt_reject_log"}}</option>
           </select>
         </div>
+
+        <div class="form-group" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+          <label style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer;">
+            <input type="checkbox" name="radius_debug_mode" value="1" {{if .Settings.RadiusDebugMode}}checked{{end}} style="margin-top: 3px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-main);">RADIUS Debug-Modus (RAW Packet Inspection)</div>
+              <div class="form-text" style="margin-top: 2px;">
+                Erfasst und dekodiert alle eingehenden und ausgehenden RADIUS UDP-Pakete mit vollständigem Attribut-Dump und Hex-Darstellung im Live-Log und der Request-Historie.
+              </div>
+            </div>
+          </label>
+        </div>
       </div>
     </div>
 

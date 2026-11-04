@@ -656,4 +656,123 @@ func TestApplyUpdateEndpointSecurityAndExecution(t *testing.T) {
 	}
 }
 
+func TestLogsPageAndEndpoints(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	// Seed an auth log
+	vlan := 20
+	logEntry := &models.AuthLog{
+		ClientMAC:      "11:22:33:44:55:66",
+		Username:       "test-client-1",
+		AuthType:       models.AuthTypeMAB,
+		Status:         "ACCEPT",
+		VLANID:         &vlan,
+		Reason:         "Valid client entry",
+		NASIP:          "192.168.1.1",
+		NASPort:        "0/1",
+		LatencyMS:      3.2,
+		EnrichedName:   "Smart Camera",
+		EnrichedVendor: "UniFi Protect",
+		RawRequest:     "RAW-ACCESS-REQUEST-DUMP",
+		RawResponse:    "RAW-ACCESS-ACCEPT-DUMP",
+	}
+	if err := db.InsertAuthLog(logEntry); err != nil {
+		t.Fatalf("InsertAuthLog failed: %v", err)
+	}
+
+	// Seed a bus log event
+	srv.bus.PublishLog(eventbus.LogEvent{
+		Timestamp: "12:00:00",
+		Level:     eventbus.LogLevelInfo,
+		Source:    "RADIUS",
+		Message:   "Test log line for prefilling console",
+	})
+
+	// 1. GET /logs
+	req := httptest.NewRequest(http.MethodGet, "/logs", nil)
+	rr := httptest.NewRecorder()
+	srv.handleLogs(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /logs expected 200, got %d", rr.Code)
+	}
+	body := rr.Body.String()
+	if !strings.Contains(body, "Test log line for prefilling console") {
+		t.Error("Expected initial log event to be prefilled in #terminalConsole")
+	}
+	if !strings.Contains(body, "11:22:33:44:55:66") {
+		t.Error("Expected historical log MAC to be in historical table")
+	}
+	if !strings.Contains(body, "Smart Camera") {
+		t.Error("Expected enriched device name in historical table")
+	}
+	if !strings.Contains(body, "DEBUG: Aus") {
+		t.Error("Expected debug mode button with initial 'DEBUG: Aus' state")
+	}
+
+	// 2. POST /api/radius/debug/toggle (HTMX)
+	reqToggle := httptest.NewRequest(http.MethodPost, "/api/radius/debug/toggle", nil)
+	reqToggle.Header.Set("HX-Request", "true")
+	rrToggle := httptest.NewRecorder()
+	srv.handleToggleDebugMode(rrToggle, reqToggle)
+
+	if rrToggle.Code != http.StatusOK {
+		t.Fatalf("Toggle debug mode expected 200, got %d", rrToggle.Code)
+	}
+	if !strings.Contains(rrToggle.Body.String(), "DEBUG: AKTIV") {
+		t.Errorf("Expected 'DEBUG: AKTIV' in toggle response, got %s", rrToggle.Body.String())
+	}
+
+	settings, _ := db.GetSettings()
+	if !settings.RadiusDebugMode {
+		t.Error("Expected settings.RadiusDebugMode to be true")
+	}
+
+	// Toggle back to off
+	rrToggle2 := httptest.NewRecorder()
+	srv.handleToggleDebugMode(rrToggle2, reqToggle)
+	if !strings.Contains(rrToggle2.Body.String(), "DEBUG: Aus") {
+		t.Errorf("Expected 'DEBUG: Aus' in toggle response, got %s", rrToggle2.Body.String())
+	}
+	settings, _ = db.GetSettings()
+	if settings.RadiusDebugMode {
+		t.Error("Expected settings.RadiusDebugMode to be false")
+	}
+
+	// 3. GET /api/logs/export/csv
+	reqCSV := httptest.NewRequest(http.MethodGet, "/api/logs/export/csv", nil)
+	rrCSV := httptest.NewRecorder()
+	srv.handleExportLogsCSV(rrCSV, reqCSV)
+
+	if rrCSV.Code != http.StatusOK {
+		t.Fatalf("CSV export expected 200, got %d", rrCSV.Code)
+	}
+	csvBody := rrCSV.Body.String()
+	if !strings.Contains(csvBody, "11:22:33:44:55:66") || !strings.Contains(csvBody, "Smart Camera") {
+		t.Errorf("Expected CSV export to contain log entry data, got: %s", csvBody)
+	}
+
+	// 4. GET /api/logs/auth/details?id=1
+	logs, _, _ := db.ListAuthLogs(1, 0, "", "")
+	if len(logs) == 0 {
+		t.Fatal("No logs found for details test")
+	}
+	reqDetails := httptest.NewRequest(http.MethodGet, "/api/logs/auth/details?id=1", nil)
+	rrDetails := httptest.NewRecorder()
+	srv.handleAuthLogDetails(rrDetails, reqDetails)
+
+	if rrDetails.Code != http.StatusOK {
+		t.Fatalf("Details endpoint expected 200, got %d", rrDetails.Code)
+	}
+
+	var detailLog models.AuthLog
+	if err := json.Unmarshal(rrDetails.Body.Bytes(), &detailLog); err != nil {
+		t.Fatalf("Failed to parse details JSON: %v", err)
+	}
+	if detailLog.RawRequest != "RAW-ACCESS-REQUEST-DUMP" || detailLog.RawResponse != "RAW-ACCESS-ACCEPT-DUMP" {
+		t.Errorf("Details endpoint raw packet mismatch: %+v", detailLog)
+	}
+}
+
 
