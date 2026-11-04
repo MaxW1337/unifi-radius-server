@@ -1,16 +1,74 @@
 {{define "content"}}
 <!-- Live Log Stream Console -->
 <div class="panel">
-  <div class="panel-header">
+  <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
     <div>
       <h3 class="panel-title">{{tr .Lang "logs.rt_title"}}</h3>
       <p class="panel-subtitle">{{tr .Lang "logs.rt_subtitle"}}</p>
     </div>
-    <div style="display: flex; gap: 8px;">
-      <button class="btn btn-secondary btn-sm" onclick="clearTerminal()">{{tr .Lang "logs.btn_clear"}}</button>
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <span id="logStatsBadge" class="badge dim" style="font-size: 11px;">0 Zeilen</span>
+      <button class="btn btn-secondary btn-sm" id="pauseStreamBtn" onclick="togglePauseStream()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+        {{tr .Lang "logs.btn_pause"}}
+      </button>
       <button class="btn btn-secondary btn-sm" id="toggleScrollBtn" onclick="toggleAutoScroll()">{{tr .Lang "logs.btn_scroll_on"}}</button>
+      <button class="btn btn-secondary btn-sm" id="copyLogsBtn" onclick="copyTerminalLogs()" title="{{tr .Lang "logs.btn_copy"}}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        {{tr .Lang "logs.btn_copy"}}
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="exportTerminalLogs()" title="{{tr .Lang "logs.btn_export"}}">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        {{tr .Lang "logs.btn_export"}}
+      </button>
+      <button class="btn btn-secondary btn-sm" onclick="clearTerminal()">{{tr .Lang "logs.btn_clear"}}</button>
     </div>
   </div>
+
+  <!-- Live Filter Toolbar -->
+  <div style="padding: 10px 16px; background: rgba(15, 23, 42, 0.4); border-bottom: 1px solid var(--border-color); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between;">
+    <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center; flex: 1;">
+      <!-- Search Input -->
+      <div style="position: relative; min-width: 220px; flex: 1; max-width: 380px;">
+        <input type="text" id="logSearchInput" placeholder="{{tr .Lang "logs.filter_search_ph"}}" class="form-control" style="font-size: 12px; padding: 6px 12px 6px 30px;" oninput="applyLogFilters()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 10px; top: 9px; color: var(--text-dim);"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <button type="button" id="clearLogSearchBtn" onclick="clearLogSearch()" style="display: none; position: absolute; right: 8px; top: 5px; background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 15px;">&times;</button>
+      </div>
+
+      <!-- Level Filter Pills -->
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; color: var(--text-dim); font-weight: 500;">{{tr .Lang "logs.filter_level"}}</span>
+        <div class="filter-pill-group">
+          <button type="button" class="filter-pill active" data-level="" onclick="setLevelFilter('', this)">{{tr .Lang "logs.filter_all_levels"}}</button>
+          <button type="button" class="filter-pill" data-level="INFO" onclick="setLevelFilter('INFO', this)" style="color: #10b981;">INFO</button>
+          <button type="button" class="filter-pill" data-level="WARN" onclick="setLevelFilter('WARN', this)" style="color: #f59e0b;">WARN</button>
+          <button type="button" class="filter-pill" data-level="ERROR" onclick="setLevelFilter('ERROR', this)" style="color: #ef4444;">ERROR</button>
+        </div>
+      </div>
+
+      <!-- Source Filter Select -->
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; color: var(--text-dim); font-weight: 500;">{{tr .Lang "logs.filter_source"}}</span>
+        <select id="logSourceSelect" class="form-control" style="width: 140px; padding: 4px 8px; font-size: 12px;" onchange="applyLogFilters()">
+          <option value="">{{tr .Lang "logs.filter_all_sources"}}</option>
+          <option value="RADIUS">RADIUS</option>
+          <option value="UniFi Sync">UniFi Sync</option>
+          <option value="CLIENT-ACTION">Client Action</option>
+          <option value="UPDATE">Update</option>
+          <option value="DB">Datenbank / DB</option>
+          <option value="BACKUP">Backup</option>
+          <option value="Web">Web UI</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Active Filter Reset Indicator -->
+    <div id="filterActiveIndicator" style="display: none; align-items: center; gap: 8px;">
+      <span class="badge info" style="font-size: 10px;">{{tr .Lang "logs.filter_active"}}</span>
+      <button type="button" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 3px 8px;" onclick="resetLogFilters()">{{tr .Lang "logs.btn_reset"}}</button>
+    </div>
+  </div>
+
   <div style="padding: 16px;">
     <div id="terminalConsole" class="terminal-window">
       <!-- Injected live via WebSocket -->
@@ -26,8 +84,8 @@
       <p class="panel-subtitle">{{tr .Lang "logs.hist_subtitle" .RetentionDays}}</p>
     </div>
     <form method="GET" action="/logs" style="display: flex; gap: 8px;">
-      <input type="text" name="mac" value="{{.MACFilter}}" placeholder="{{tr .Lang "logs.search_ph"}}" class="form-control" style="width: 220px; padding: 6px 12px; font-size: 12px;">
-      <select name="status" class="form-control" style="width: 140px; padding: 6px 10px; font-size: 12px;" onchange="this.form.submit()">
+      <input type="text" id="histLogSearchInput" name="mac" value="{{.MACFilter}}" placeholder="{{tr .Lang "logs.search_ph"}}" class="form-control" style="width: 220px; padding: 6px 12px; font-size: 12px;" oninput="filterHistTable()">
+      <select id="histLogStatusSelect" name="status" class="form-control" style="width: 140px; padding: 6px 10px; font-size: 12px;" onchange="this.form.submit()">
         <option value="" {{if eq .StatusFilter ""}}selected{{end}}>{{tr .Lang "logs.filter_all"}}</option>
         <option value="ACCEPT" {{if eq .StatusFilter "ACCEPT"}}selected{{end}}>{{tr .Lang "logs.filter_accept"}}</option>
         <option value="REJECT" {{if eq .StatusFilter "REJECT"}}selected{{end}}>{{tr .Lang "logs.filter_reject"}}</option>
@@ -37,7 +95,7 @@
   </div>
 
   <div class="table-wrapper">
-    <table>
+    <table id="historical-audit-table">
       <thead>
         <tr>
           <th>{{tr .Lang "logs.th_time"}}</th>
@@ -51,7 +109,7 @@
       </thead>
       <tbody>
         {{range .Logs}}
-        <tr>
+        <tr data-status="{{.Status}}">
           <td style="color: var(--text-dim); font-size: 12px;">
             <time class="local-time" datetime="{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}" data-format="datetime">{{.Timestamp.Format "02.01. 15:04:05"}}</time>
           </td>
@@ -95,22 +153,210 @@
 
 <script>
 let autoScroll = true;
+let isPaused = false;
+let activeLevel = '';
+let activeSource = '';
+let pausedLinesCount = 0;
+
 function clearTerminal() {
-  document.getElementById('terminalConsole').innerHTML = '';
+  const term = document.getElementById('terminalConsole');
+  if (term) term.innerHTML = '';
+  updateLogStats();
 }
+
 function toggleAutoScroll() {
   autoScroll = !autoScroll;
-  document.getElementById('toggleScrollBtn').textContent = 'Auto-Scroll: ' + (autoScroll ? 'An' : 'Aus');
+  const btn = document.getElementById('toggleScrollBtn');
+  if (btn) btn.textContent = 'Auto-Scroll: ' + (autoScroll ? 'An' : 'Aus');
+}
+
+function togglePauseStream() {
+  isPaused = !isPaused;
+  const btn = document.getElementById('pauseStreamBtn');
+  if (isPaused) {
+    pausedLinesCount = 0;
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> {{tr .Lang "logs.btn_resume"}}`;
+    btn.classList.add('btn-primary');
+    btn.classList.remove('btn-secondary');
+  } else {
+    btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg> {{tr .Lang "logs.btn_pause"}}`;
+    btn.classList.add('btn-secondary');
+    btn.classList.remove('btn-primary');
+    applyLogFilters();
+    if (autoScroll) {
+      const term = document.getElementById('terminalConsole');
+      if (term) term.scrollTop = term.scrollHeight;
+    }
+  }
+}
+
+function setLevelFilter(lvl, btnEl) {
+  activeLevel = lvl;
+  document.querySelectorAll('.filter-pill-group .filter-pill').forEach(p => p.classList.remove('active'));
+  if (btnEl) btnEl.classList.add('active');
+  applyLogFilters();
+}
+
+function clearLogSearch() {
+  const inp = document.getElementById('logSearchInput');
+  if (inp) {
+    inp.value = '';
+    applyLogFilters();
+  }
+}
+
+function resetLogFilters() {
+  activeLevel = '';
+  activeSource = '';
+  const searchInp = document.getElementById('logSearchInput');
+  if (searchInp) searchInp.value = '';
+  const srcSel = document.getElementById('logSourceSelect');
+  if (srcSel) srcSel.value = '';
+  document.querySelectorAll('.filter-pill-group .filter-pill').forEach(p => {
+    p.classList.toggle('active', p.getAttribute('data-level') === '');
+  });
+  applyLogFilters();
+}
+
+function applyLogFilters() {
+  const searchVal = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
+  const clearBtn = document.getElementById('clearLogSearchBtn');
+  if (clearBtn) clearBtn.style.display = searchVal ? 'block' : 'none';
+
+  const srcVal = (document.getElementById('logSourceSelect')?.value || '').toLowerCase();
+  activeSource = srcVal;
+
+  const isFilterActive = !!(searchVal || activeLevel || activeSource);
+  const ind = document.getElementById('filterActiveIndicator');
+  if (ind) ind.style.display = isFilterActive ? 'flex' : 'none';
+
+  const lines = document.querySelectorAll('#terminalConsole .terminal-line');
+  let visibleCount = 0;
+
+  lines.forEach(line => {
+    if (isPaused && line.classList.contains('log-paused-buffered')) {
+      return;
+    }
+
+    const lvl = (line.getAttribute('data-level') || '').toUpperCase();
+    const src = (line.getAttribute('data-source') || '').toLowerCase();
+    const text = (line.textContent || '').toLowerCase();
+
+    let match = true;
+    if (activeLevel && lvl !== activeLevel) match = false;
+    if (activeSource && !src.includes(activeSource)) match = false;
+    if (searchVal && !text.includes(searchVal)) match = false;
+
+    if (match) {
+      line.classList.remove('log-hidden');
+      visibleCount++;
+    } else {
+      line.classList.add('log-hidden');
+    }
+  });
+
+  updateLogStats(visibleCount, lines.length);
+}
+
+function updateLogStats(visible, total) {
+  const badge = document.getElementById('logStatsBadge');
+  if (!badge) return;
+  if (visible === undefined || total === undefined) {
+    const lines = document.querySelectorAll('#terminalConsole .terminal-line');
+    total = lines.length;
+    visible = Array.from(lines).filter(l => !l.classList.contains('log-hidden')).length;
+  }
+  badge.textContent = visible + ' von ' + total + ' Zeilen';
+}
+
+function copyTerminalLogs() {
+  const visibleLines = Array.from(document.querySelectorAll('#terminalConsole .terminal-line:not(.log-hidden)'))
+    .map(l => l.textContent.replace(/\s+/g, ' ').trim());
+  if (visibleLines.length === 0) return;
+
+  navigator.clipboard.writeText(visibleLines.join('\n')).then(() => {
+    const btn = document.getElementById('copyLogsBtn');
+    if (btn) {
+      const orig = btn.innerHTML;
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px; color: var(--success);"><polyline points="20 6 9 17 4 12"></polyline></svg> {{tr .Lang "logs.btn_copied"}}`;
+      setTimeout(() => { btn.innerHTML = orig; }, 2000);
+    }
+  });
+}
+
+function exportTerminalLogs() {
+  const visibleLines = Array.from(document.querySelectorAll('#terminalConsole .terminal-line:not(.log-hidden)'))
+    .map(l => l.textContent.replace(/\s+/g, ' ').trim());
+  if (visibleLines.length === 0) return;
+
+  const blob = new Blob([visibleLines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const now = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+  a.download = `radius-live-logs-${now}.log`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+// Client-side quick filter for historical audit table
+function filterHistTable() {
+  const q = (document.getElementById('histLogSearchInput')?.value || '').trim().toLowerCase();
+  const rows = document.querySelectorAll('#historical-audit-table tbody tr');
+  rows.forEach(r => {
+    if (r.id === 'empty-feed-placeholder') return;
+    const txt = (r.textContent || '').toLowerCase();
+    r.style.display = (!q || txt.includes(q)) ? '' : 'none';
+  });
 }
 
 // WebSocket Terminal Hook
 document.body.addEventListener('htmx:wsAfterMessage', function(e) {
-  // If message contains log line, scroll down
-  if (autoScroll) {
-    const term = document.getElementById('terminalConsole');
-    if (term) term.scrollTop = term.scrollHeight;
+  const term = document.getElementById('terminalConsole');
+  if (!term) return;
+
+  // Find newly inserted line
+  const lastLine = term.lastElementChild;
+  if (!lastLine || !lastLine.classList.contains('terminal-line')) return;
+
+  if (isPaused) {
+    lastLine.classList.add('log-hidden', 'log-paused-buffered');
+    pausedLinesCount++;
+    const btn = document.getElementById('pauseStreamBtn');
+    if (btn) {
+      btn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> {{tr .Lang "logs.btn_resume"}} (${pausedLinesCount})`;
+    }
+    return;
   }
+
+  // Check if line matches active filters
+  const searchVal = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
+  const lvl = (lastLine.getAttribute('data-level') || '').toUpperCase();
+  const src = (lastLine.getAttribute('data-source') || '').toLowerCase();
+  const text = (lastLine.textContent || '').toLowerCase();
+
+  let match = true;
+  if (activeLevel && lvl !== activeLevel) match = false;
+  if (activeSource && !src.includes(activeSource)) match = false;
+  if (searchVal && !text.includes(searchVal)) match = false;
+
+  if (match) {
+    lastLine.classList.remove('log-hidden');
+    if (autoScroll) {
+      term.scrollTop = term.scrollHeight;
+    }
+  } else {
+    lastLine.classList.add('log-hidden');
+  }
+
+  updateLogStats();
+});
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+  applyLogFilters();
 });
 </script>
 {{end}}
-

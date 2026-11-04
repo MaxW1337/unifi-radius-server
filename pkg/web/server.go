@@ -1743,9 +1743,14 @@ func formatAuthRowHTML(a models.AuthLog) string {
 	tsRFC := a.Timestamp.Format(time.RFC3339)
 	tsFallback := a.Timestamp.Format("15:04:05")
 
+	vlanStr := ""
+	if a.VLANID != nil {
+		vlanStr = fmt.Sprintf("%d", *a.VLANID)
+	}
+
 	// Uses hx-swap-oob="afterbegin" on #live-feed-rows
 	return fmt.Sprintf(`
-	<tr id="live-feed-rows" hx-swap-oob="afterbegin">
+	<tr id="live-feed-rows" hx-swap-oob="afterbegin" data-status="%s" data-ident="%s" data-vlan="%s">
 		<td style="color: var(--text-dim); font-size: 12px;"><time class="local-time" datetime="%s" data-format="time">%s</time></td>
 		<td>%s</td>
 		<td><span class="code-pill">%s</span></td>
@@ -1761,6 +1766,9 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		<td style="color: var(--text-muted); font-size: 12px;">%.1f ms</td>
 	</tr>
 	`,
+		template.HTMLEscapeString(a.Status),
+		template.HTMLEscapeString(strings.ToLower(ident)),
+		template.HTMLEscapeString(vlanStr),
 		template.HTMLEscapeString(tsRFC),
 		template.HTMLEscapeString(tsFallback),
 		statusBadge,
@@ -1787,14 +1795,16 @@ func formatLogLineHTML(l eventbus.LogEvent) string {
 	// Uses hx-swap-oob="beforeend" on #terminalConsole
 	return fmt.Sprintf(`
 	<div id="terminalConsole" hx-swap-oob="beforeend">
-		<div class="terminal-line">
+		<div class="terminal-line" data-level="%s" data-source="%s">
 			<span class="terminal-ts">[<time class="local-time" datetime="%s" data-format="time">%s</time>]</span>
 			<span class="terminal-src">[%s]</span>
 			<span class="%s">[%s]</span>
-			<span>%s</span>
+			<span class="terminal-msg">%s</span>
 		</div>
 	</div>
 	`,
+		template.HTMLEscapeString(string(l.Level)),
+		template.HTMLEscapeString(l.Source),
 		template.HTMLEscapeString(nowRFC),
 		template.HTMLEscapeString(l.Timestamp),
 		template.HTMLEscapeString(l.Source),

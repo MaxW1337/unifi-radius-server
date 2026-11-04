@@ -524,6 +524,47 @@ tr:hover td {
 .terminal-lvl-warn { color: #f59e0b; }
 .terminal-lvl-error { color: #ef4444; }
 
+.terminal-line.log-hidden {
+  display: none !important;
+}
+
+.terminal-highlight {
+  background-color: rgba(245, 158, 11, 0.35);
+  color: #fef08a;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.filter-pill {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.filter-pill:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-color);
+}
+
+.filter-pill.active {
+  background: var(--unifi-blue);
+  color: #fff !important;
+  border-color: var(--unifi-blue);
+  box-shadow: 0 0 8px rgba(0, 102, 255, 0.3);
+}
+
+.filter-pill-group {
+  display: flex;
+  gap: 4px;
+}
+
 /* Login Box */
 .login-container {
   min-height: 100vh;
