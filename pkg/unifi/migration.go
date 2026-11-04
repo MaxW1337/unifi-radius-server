@@ -153,7 +153,8 @@ func MigrateBuiltinRadius(client *Client, db *database.DB, disableBuiltin, updat
 	}
 
 	// 3. Update / Create UniFi RADIUS Profile pointing to this server & switch WLANs
-	if updateProfile {
+	var targetProfileID string
+	if updateProfile || disableBuiltin {
 		profileName := "UDM-Internal-RADIUS"
 		serverSecret := settings.GlobalSharedSecret
 		serverPort := settings.RADIUSAuthPort
@@ -164,19 +165,19 @@ func MigrateBuiltinRadius(client *Client, db *database.DB, disableBuiltin, updat
 		} else {
 			report.ProfileUpdated = true
 			report.ProfileName = profile.Name
+			targetProfileID = profile.ID
 			report.Messages = append(report.Messages, fmt.Sprintf("UniFi RADIUS-Profil '%s' (127.0.0.1:%d, VLAN Support: Aktiv) erfolgreich erstellt/aktualisiert.", profile.Name, serverPort))
 
-			// Automatically switch any WLANs using RADIUS to the new profile
-			if wlans, wErr := client.ListWLANs(); wErr == nil {
-				for _, w := range wlans {
-					if (w.RadiusProfileID != "" && w.RadiusProfileID != profile.ID) || w.RadiusMacAuth {
-						if uErr := client.UpdateWLANRadiusProfile(w.ID, profile.ID); uErr == nil {
-							report.Messages = append(report.Messages, fmt.Sprintf("WLAN '%s' erfolgreich auf RADIUS-Profil '%s' umgestellt.", w.Name, profile.Name))
-						} else {
-							report.Messages = append(report.Messages, fmt.Sprintf("Warnung: WLAN '%s' konnte nicht auf Profil '%s' umgestellt werden: %v", w.Name, profile.Name, uErr))
-						}
-					}
+			// Automatically switch any and all WLANs using RADIUS / Default profile to the new profile
+			migratedWLANs, mwErr := client.MigrateAllRadiusWLANs(profile.ID)
+			if mwErr != nil {
+				report.Messages = append(report.Messages, fmt.Sprintf("Warnung beim Migrieren der WLANs: %v", mwErr))
+			} else if len(migratedWLANs) > 0 {
+				for _, wName := range migratedWLANs {
+					report.Messages = append(report.Messages, fmt.Sprintf("WLAN '%s' (Enterprise / MAB) erfolgreich von Built-in RADIUS ('Default') auf Profil '%s' umgestellt.", wName, profile.Name))
 				}
+			} else {
+				report.Messages = append(report.Messages, "Alle RADIUS-WLANs sind bereits auf 'UDM-Internal-RADIUS' umgestellt.")
 			}
 
 			// Automatically update Global Switch 802.1X Control (Credential Source: RADIUS Profile, Profile: UDM-Internal-RADIUS, Fallback: LAN)
@@ -189,7 +190,7 @@ func MigrateBuiltinRadius(client *Client, db *database.DB, disableBuiltin, updat
 
 	// 4. Disable built-in RADIUS server if requested (to release UDP port 1812)
 	if disableBuiltin && report.BuiltinRadiusDetected {
-		if err := client.DisableBuiltinRadius(); err != nil {
+		if err := client.DisableBuiltinRadius(targetProfileID); err != nil {
 			report.Messages = append(report.Messages, fmt.Sprintf("Warnung: Built-in RADIUS konnte nicht automatisch deaktiviert werden: %v", err))
 		} else {
 			report.BuiltinRadiusDisabled = true

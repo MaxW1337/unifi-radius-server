@@ -87,7 +87,8 @@
           <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
             <input type="checkbox" id="update_profile_cb" checked style="width: 16px; height: 16px; margin-top: 2px; accent-color: var(--unifi-blue);">
             <div>
-              <span><strong>{{tr .Lang "settings.mig_opt_profile"}}</strong> (inkl. automatischer Umstellung aller RADIUS-WLANs)</span>
+              <span><strong>{{tr .Lang "settings.mig_opt_profile"}}</strong> (inkl. automatischer Erkennung & Umstellung aller RADIUS/MAB-WLANs)</span>
+              <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">Migriert WLANs mit WPA-Enterprise oder MAC-Filter automatisch vom Standard-Profil ('Default') auf 'UDM-Internal-RADIUS', sodass UniFi das Pausieren/Deaktivieren nicht mehr blockiert.</div>
             </div>
           </label>
           <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">

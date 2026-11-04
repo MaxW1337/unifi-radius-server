@@ -109,8 +109,10 @@ Falls in deiner UniFi Network Application der integrierte RADIUS-Server aktivier
 2. **1-Klick Migration**:
    * **Import aller Accounts**: Übernimmt alle MAB-Clients (automatisch formatiert) und 802.1X Benutzer (Passwörter sicher gehasht) inklusive ihrer VLAN-Zuweisungen nach SQLite.
    * **Shared Secret Übernahme**: Synchronisiert das bestehende Shared Secret, sodass Switches und Access Points nicht manuell umkonfiguriert werden müssen.
-   * **Port 1812 freigeben**: Deaktiviert den integrierten UniFi FreeRADIUS-Dienst automatisch über die UniFi API, damit der neue Server den UDP-Port 1812 exklusiv binden kann.
    * **UniFi RADIUS-Profil anpassen**: Erstellt bzw. aktualisiert das UniFi RADIUS-Profil `UDM-Internal-RADIUS` (`127.0.0.1:1812`, VLAN Support: Aktiv) vollautomatisch.
+   * **Automatische WLAN-Migration**: Stellt alle Wireless-Netzwerke (SSIDs) mit WPA-Enterprise oder MAC-Authentifizierung automatisch vom integrierten Standard-Profil (`Default`) auf `UDM-Internal-RADIUS` um. Verhindert zuverlässig die UniFi-Sperre *"Default profile cannot be paused because it is used by WiFi..."*.
+   * **Globale Switch 802.1X Control**: Aktualisiert die Switch-Einstellungen automatisch auf RADIUS-Profil `UDM-Internal-RADIUS` mit LAN-Fallback.
+   * **Port 1812 freigeben**: Deaktiviert den integrierten UniFi FreeRADIUS-Dienst automatisch über die UniFi API, damit der neue Server den UDP-Port 1812 exklusiv binden kann.
 
 ---
 

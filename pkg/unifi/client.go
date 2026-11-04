@@ -727,9 +727,67 @@ func (c *Client) SetBuiltinRadiusEnabled(enabled bool) error {
 	return fmt.Errorf("failed to change builtin RADIUS server state in UniFi")
 }
 
-// DisableBuiltinRadius disables UniFi's internal RADIUS server to release UDP port 1812.
-func (c *Client) DisableBuiltinRadius() error {
+// DisableBuiltinRadiusWithAutoResolve disables UniFi's internal RADIUS server, automatically resolving
+// and migrating any referring WLANs, switch settings, or networks if UniFi reports api.err.ObjectReferredBy.
+func (c *Client) DisableBuiltinRadiusWithAutoResolve(targetProfileID string) error {
+	// If targetProfileID is not provided, look for UDM-Internal-RADIUS
+	if targetProfileID == "" {
+		if profiles, pErr := c.ListRadiusProfiles(); pErr == nil {
+			for _, p := range profiles {
+				if strings.EqualFold(p.Name, "UDM-Internal-RADIUS") {
+					targetProfileID = p.ID
+					break
+				}
+			}
+		}
+	}
+
+	// 1. Proactive migration of WLANs and Switch settings
+	if targetProfileID != "" {
+		_, _ = c.MigrateAllRadiusWLANs(targetProfileID)
+		if fallbackLAN, err := c.GetDefaultLANNetworkID(); err == nil {
+			_ = c.UpdateGlobalSwitch8021X(targetProfileID, fallbackLAN)
+		}
+	}
+
+	// 2. Attempt disabling with reactive resolution if ObjectReferredBy is hit
+	for attempt := 0; attempt < 3; attempt++ {
+		err := c.SetBuiltinRadiusEnabled(false)
+		if err == nil {
+			return nil
+		}
+
+		// Check if UniFi blocked because an object still references the default RADIUS server/profile
+		if targetProfileID != "" && (strings.Contains(err.Error(), "referenziert noch") || strings.Contains(err.Error(), "ObjectReferredBy")) {
+			// Find all WLANs and update any that are not on targetProfileID
+			if wlans, wErr := c.ListWLANs(); wErr == nil {
+				resolvedAny := false
+				for _, w := range wlans {
+					if w.RadiusProfileID != targetProfileID {
+						if uErr := c.UpdateWLANRadiusProfile(w.ID, targetProfileID); uErr == nil {
+							resolvedAny = true
+						}
+					}
+				}
+				if resolvedAny {
+					continue // Retry disabling
+				}
+			}
+		}
+
+		return err
+	}
+
 	return c.SetBuiltinRadiusEnabled(false)
+}
+
+// DisableBuiltinRadius disables UniFi's internal RADIUS server to release UDP port 1812.
+func (c *Client) DisableBuiltinRadius(targetProfileIDs ...string) error {
+	targetID := ""
+	if len(targetProfileIDs) > 0 {
+		targetID = targetProfileIDs[0]
+	}
+	return c.DisableBuiltinRadiusWithAutoResolve(targetID)
 }
 
 // EnableBuiltinRadius enables UniFi's internal RADIUS server.
@@ -812,10 +870,13 @@ type UniFiRadiusServerConfig struct {
 
 // UniFiRadiusProfile represents a RADIUS profile in UniFi Network.
 type UniFiRadiusProfile struct {
-	ID          string                    `json:"_id,omitempty"`
-	Name        string                    `json:"name"`
-	VlanEnabled bool                      `json:"vlan_enabled"`
-	AuthServers []UniFiRadiusServerConfig `json:"auth_servers"`
+	ID               string                    `json:"_id,omitempty"`
+	Name             string                    `json:"name"`
+	AttrHiddenID     string                    `json:"attr_hidden_id,omitempty"`
+	AttrNoDelete     bool                      `json:"attr_no_delete,omitempty"`
+	UseUSGAuthServer bool                      `json:"use_usg_auth_server,omitempty"`
+	VlanEnabled      bool                      `json:"vlan_enabled"`
+	AuthServers      []UniFiRadiusServerConfig `json:"auth_servers"`
 }
 
 // ListRadiusProfiles returns all RADIUS profiles configured in UniFi Network.
@@ -852,6 +913,21 @@ func (c *Client) ListRadiusProfiles() ([]UniFiRadiusProfile, error) {
 	}
 
 	return nil, fmt.Errorf("failed to list radius profiles from UniFi")
+}
+
+// GetDefaultRadiusProfile finds UniFi's built-in default RADIUS profile.
+func (c *Client) GetDefaultRadiusProfile() (*UniFiRadiusProfile, error) {
+	profiles, err := c.ListRadiusProfiles()
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range profiles {
+		if p.AttrHiddenID == "Default" || strings.EqualFold(p.Name, "Default") || p.UseUSGAuthServer {
+			pCopy := p
+			return &pCopy, nil
+		}
+	}
+	return nil, fmt.Errorf("default RADIUS profile not found in UniFi")
 }
 
 // CreateOrUpdateRadiusProfile creates or updates a RADIUS profile pointing to this server.
@@ -936,12 +1012,46 @@ func (c *Client) CreateOrUpdateRadiusProfile(profileName, serverIP string, port 
 
 // UniFiWLAN represents a wireless network configured in UniFi Network.
 type UniFiWLAN struct {
-	ID              string `json:"_id,omitempty"`
-	Name            string `json:"name"`
-	Enabled         bool   `json:"enabled"`
-	Security        string `json:"security"`
-	RadiusProfileID string `json:"radiusprofile_id,omitempty"`
-	RadiusMacAuth   bool   `json:"radius_mac_auth_enabled"`
+	ID                  string `json:"_id,omitempty"`
+	Name                string `json:"name"`
+	Enabled             bool   `json:"enabled"`
+	Security            string `json:"security"`
+	RadiusProfileID     string `json:"radiusprofile_id,omitempty"`
+	RadiusMacAuth       bool   `json:"radius_mac_auth_enabled"`
+	Hotspot2ConfEnabled bool   `json:"hotspot2conf_enabled,omitempty"`
+	WPAMode             string `json:"wpa_mode,omitempty"`
+}
+
+// UsesRadius checks if the WLAN is configured to use RADIUS authentication or references the default profile.
+func (w *UniFiWLAN) UsesRadius(defaultProfileID, targetProfileID string) bool {
+	// If already pointing to target profile, it does not need migration
+	if targetProfileID != "" && w.RadiusProfileID == targetProfileID {
+		return false
+	}
+
+	// Explicitly points to another profile or the default profile ID
+	if w.RadiusProfileID != "" {
+		return true
+	}
+	if defaultProfileID != "" && w.RadiusProfileID == defaultProfileID {
+		return true
+	}
+	if strings.EqualFold(w.RadiusProfileID, "Default") {
+		return true
+	}
+
+	// MAC Authentication Bypass (MAB) active
+	if w.RadiusMacAuth {
+		return true
+	}
+
+	// WPA Enterprise security modes
+	sec := strings.ToLower(w.Security)
+	if sec == "wpaeap" || strings.Contains(sec, "eap") || strings.Contains(sec, "enterprise") {
+		return true
+	}
+
+	return false
 }
 
 // ListWLANs returns all wireless networks configured in UniFi Network.
@@ -1005,6 +1115,36 @@ func (c *Client) UpdateWLANRadiusProfile(wlanID, profileID string) error {
 	}
 
 	return fmt.Errorf("failed to update WLAN radius profile in UniFi")
+}
+
+// MigrateAllRadiusWLANs scans all wireless networks and updates any that use RADIUS or point to the default profile.
+func (c *Client) MigrateAllRadiusWLANs(targetProfileID string) ([]string, error) {
+	if targetProfileID == "" {
+		return nil, fmt.Errorf("target radius profile ID cannot be empty")
+	}
+
+	var defaultProfileID string
+	if defProf, err := c.GetDefaultRadiusProfile(); err == nil && defProf != nil {
+		defaultProfileID = defProf.ID
+	}
+
+	wlans, err := c.ListWLANs()
+	if err != nil {
+		return nil, err
+	}
+
+	var migratedNames []string
+	for _, w := range wlans {
+		if w.UsesRadius(defaultProfileID, targetProfileID) {
+			if err := c.UpdateWLANRadiusProfile(w.ID, targetProfileID); err == nil {
+				migratedNames = append(migratedNames, w.Name)
+			} else {
+				return migratedNames, fmt.Errorf("failed to migrate WLAN '%s': %w", w.Name, err)
+			}
+		}
+	}
+
+	return migratedNames, nil
 }
 
 // GetDefaultLANNetworkID finds the internal UniFi _id of the default corporate LAN network.

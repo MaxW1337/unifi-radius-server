@@ -1426,11 +1426,30 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 	totalClients, migratedClients, _ := s.db.CountClients()
 	nowStr := time.Now().Format("15:04:05")
 
-	var radiusWLANs []string
+	var radiusWLANsOnTarget []string
+	var radiusWLANsNeedingMigration []string
+	var targetProfileID string
+
+	if profiles, pErr := client.ListRadiusProfiles(); pErr == nil {
+		for _, p := range profiles {
+			if strings.EqualFold(p.Name, "UDM-Internal-RADIUS") {
+				targetProfileID = p.ID
+				break
+			}
+		}
+	}
+
+	var defaultProfileID string
+	if defP, dErr := client.GetDefaultRadiusProfile(); dErr == nil && defP != nil {
+		defaultProfileID = defP.ID
+	}
+
 	if wlans, wErr := client.ListWLANs(); wErr == nil {
 		for _, wl := range wlans {
-			if wl.RadiusMacAuth || wl.RadiusProfileID != "" {
-				radiusWLANs = append(radiusWLANs, wl.Name)
+			if targetProfileID != "" && wl.RadiusProfileID == targetProfileID {
+				radiusWLANsOnTarget = append(radiusWLANsOnTarget, wl.Name)
+			} else if wl.UsesRadius(defaultProfileID, targetProfileID) {
+				radiusWLANsNeedingMigration = append(radiusWLANsNeedingMigration, wl.Name)
 			}
 		}
 	}
@@ -1452,9 +1471,13 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 		}
 
 		wlanInfo := ""
-		if len(radiusWLANs) > 0 {
-			wlanInfo = fmt.Sprintf(`<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Aktive RADIUS-WLANs in UniFi: <strong>%s</strong></div>`,
-				template.HTMLEscapeString(strings.Join(radiusWLANs, ", ")))
+		if len(radiusWLANsNeedingMigration) > 0 {
+			wlanInfo += fmt.Sprintf(`<div style="font-size: 11px; color: var(--yellow); margin-top: 4px;">WLANs mit Built-in RADIUS ('Default'): <strong>%s</strong> (werden bei Migration automatisch umgestellt)</div>`,
+				template.HTMLEscapeString(strings.Join(radiusWLANsNeedingMigration, ", ")))
+		}
+		if len(radiusWLANsOnTarget) > 0 {
+			wlanInfo += fmt.Sprintf(`<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Bereits auf 'UDM-Internal-RADIUS': <strong>%s</strong></div>`,
+				template.HTMLEscapeString(strings.Join(radiusWLANsOnTarget, ", ")))
 		}
 
 		sqliteInfo := ""
@@ -1498,9 +1521,13 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(html))
 	} else {
 		wlanInfo := ""
-		if len(radiusWLANs) > 0 {
-			wlanInfo = fmt.Sprintf(`<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Aktive RADIUS-WLANs (Profil 'UDM-Internal-RADIUS'): <strong>%s</strong></div>`,
-				template.HTMLEscapeString(strings.Join(radiusWLANs, ", ")))
+		if len(radiusWLANsNeedingMigration) > 0 {
+			wlanInfo += fmt.Sprintf(`<div style="font-size: 11px; color: var(--yellow); margin-top: 4px;">Warnung: WLANs verwenden noch 'Default': <strong>%s</strong></div>`,
+				template.HTMLEscapeString(strings.Join(radiusWLANsNeedingMigration, ", ")))
+		}
+		if len(radiusWLANsOnTarget) > 0 {
+			wlanInfo += fmt.Sprintf(`<div style="font-size: 11px; color: var(--text-dim); margin-top: 4px;">Aktive RADIUS-WLANs (Profil 'UDM-Internal-RADIUS'): <strong>%s</strong></div>`,
+				template.HTMLEscapeString(strings.Join(radiusWLANsOnTarget, ", ")))
 		}
 
 		html := fmt.Sprintf(`
@@ -1552,31 +1579,17 @@ func (s *Server) handleToggleBuiltinRadius(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// If disabling, switch any remaining WLANs first to prevent ObjectReferredBy
-	if !enable {
-		if profiles, pErr := client.ListRadiusProfiles(); pErr == nil {
-			var newProfileID string
-			for _, p := range profiles {
-				if p.Name == "UDM-Internal-RADIUS" {
-					newProfileID = p.ID
-					break
-				}
-			}
-			if newProfileID != "" {
-				if wlans, wErr := client.ListWLANs(); wErr == nil {
-					for _, w := range wlans {
-						if w.RadiusMacAuth || w.RadiusProfileID != "" {
-							_ = client.UpdateWLANRadiusProfile(w.ID, newProfileID)
-						}
-					}
-				}
-			}
-		}
+	var actionErr error
+	if enable {
+		actionErr = client.EnableBuiltinRadius()
+	} else {
+		// Automatically resolves and migrates all WLANs and switch settings to UDM-Internal-RADIUS
+		actionErr = client.DisableBuiltinRadius()
 	}
 
-	if err := client.SetBuiltinRadiusEnabled(enable); err != nil {
+	if actionErr != nil {
 		w.Header().Set("Content-Type", "text/html")
-		_, _ = w.Write([]byte(fmt.Sprintf("<div class='badge reject' style='padding: 10px;'>Aktion fehlgeschlagen: %s</div>", template.HTMLEscapeString(err.Error()))))
+		_, _ = w.Write([]byte(fmt.Sprintf("<div class='badge reject' style='padding: 10px;'>Aktion fehlgeschlagen: %s</div>", template.HTMLEscapeString(actionErr.Error()))))
 		return
 	}
 

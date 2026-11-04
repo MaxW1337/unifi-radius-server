@@ -161,3 +161,104 @@ func TestMigrateBuiltinRadius(t *testing.T) {
 	}
 }
 
+func TestMigrateAllRadiusWLANs(t *testing.T) {
+	updatedWLANs := make(map[string]string)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
+		switch r.URL.Path {
+		case "/proxy/network/api/s/default/rest/radiusprofile":
+			resp := map[string]interface{}{
+				"meta": map[string]string{"rc": "ok"},
+				"data": []map[string]interface{}{
+					{
+						"_id":            "default_prof_id",
+						"name":           "Default",
+						"attr_hidden_id": "Default",
+					},
+					{
+						"_id":  "custom_prof_id",
+						"name": "UDM-Internal-RADIUS",
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+
+		case "/proxy/network/api/s/default/rest/wlanconf":
+			resp := map[string]interface{}{
+				"meta": map[string]string{"rc": "ok"},
+				"data": []map[string]interface{}{
+					{
+						"_id":                     "wlan_enterprise",
+						"name":                    "Corp-Enterprise",
+						"security":                "wpaeap",
+						"radiusprofile_id":        "default_prof_id",
+						"radius_mac_auth_enabled": false,
+					},
+					{
+						"_id":                     "wlan_mab",
+						"name":                    "IoT-MAB",
+						"security":                "open",
+						"radiusprofile_id":        "",
+						"radius_mac_auth_enabled": true,
+					},
+					{
+						"_id":                     "wlan_normal_psk",
+						"name":                    "Home-PSK",
+						"security":                "wpapsk",
+						"radiusprofile_id":        "",
+						"radius_mac_auth_enabled": false,
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+
+		case "/proxy/network/api/s/default/rest/wlanconf/wlan_enterprise",
+			"/proxy/network/api/s/default/rest/wlanconf/wlan_mab":
+			var payload map[string]interface{}
+			json.NewDecoder(r.Body).Decode(&payload)
+			wlanID := "wlan_enterprise"
+			if r.URL.Path == "/proxy/network/api/s/default/rest/wlanconf/wlan_mab" {
+				wlanID = "wlan_mab"
+			}
+			updatedWLANs[wlanID] = payload["radiusprofile_id"].(string)
+			w.WriteHeader(http.StatusOK)
+			json.NewEncoder(w).Encode(map[string]interface{}{"meta": map[string]string{"rc": "ok"}})
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:  ts.URL,
+		Site:     "default",
+		AuthMode: "apikey",
+		APIKey:   "testkey",
+	})
+	if err != nil {
+		t.Fatalf("Failed to create client: %v", err)
+	}
+
+	migrated, err := client.MigrateAllRadiusWLANs("custom_prof_id")
+	if err != nil {
+		t.Fatalf("MigrateAllRadiusWLANs failed: %v", err)
+	}
+
+	if len(migrated) != 2 {
+		t.Fatalf("Expected 2 migrated WLANs, got %d (%v)", len(migrated), migrated)
+	}
+
+	if updatedWLANs["wlan_enterprise"] != "custom_prof_id" {
+		t.Errorf("wlan_enterprise was not updated to custom_prof_id: %v", updatedWLANs["wlan_enterprise"])
+	}
+	if updatedWLANs["wlan_mab"] != "custom_prof_id" {
+		t.Errorf("wlan_mab was not updated to custom_prof_id: %v", updatedWLANs["wlan_mab"])
+	}
+	if _, ok := updatedWLANs["wlan_normal_psk"]; ok {
+		t.Error("wlan_normal_psk should NOT have been touched!")
+	}
+}
+
