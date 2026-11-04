@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
+	"github.com/mwittenburg/unifi-radius-server/pkg/version"
 )
 
 // UpdateInfo holds the result of a version check against GitHub Releases.
@@ -66,7 +67,7 @@ func NewService(currentVersion string, repoOwner, repoName string) *Service {
 		repoName = "unifi-radius-server"
 	}
 	if currentVersion == "" {
-		currentVersion = "1.0.5"
+		currentVersion = version.String()
 	}
 
 	return &Service{

@@ -18,14 +18,15 @@ import (
 	"github.com/mwittenburg/unifi-radius-server/pkg/notify"
 	"github.com/mwittenburg/unifi-radius-server/pkg/radius"
 	"github.com/mwittenburg/unifi-radius-server/pkg/unifi"
+	"github.com/mwittenburg/unifi-radius-server/pkg/version"
 	"github.com/mwittenburg/unifi-radius-server/pkg/web"
 	"golang.org/x/crypto/bcrypt"
 )
 
 var (
-	Version   = "1.0.5"
-	GitCommit = "dev"
-	BuildDate = "unknown"
+	Version   = version.Version
+	GitCommit = version.GitCommit
+	BuildDate = version.BuildDate
 )
 
 func main() {

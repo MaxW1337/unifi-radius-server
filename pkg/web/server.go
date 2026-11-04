@@ -32,6 +32,7 @@ import (
 	"github.com/mwittenburg/unifi-radius-server/pkg/radius"
 	"github.com/mwittenburg/unifi-radius-server/pkg/unifi"
 	"github.com/mwittenburg/unifi-radius-server/pkg/updater"
+	"github.com/mwittenburg/unifi-radius-server/pkg/version"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -142,7 +143,7 @@ type Server struct {
 }
 
 // NewServer initializes the HTTP web server.
-func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, port int, version ...string) (*Server, error) {
+func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, port int, verOverride ...string) (*Server, error) {
 	if port <= 0 {
 		port = 9182
 	}
@@ -150,9 +151,9 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 		bus = eventbus.DefaultBus
 	}
 
-	ver := "1.0.5"
-	if len(version) > 0 && version[0] != "" {
-		ver = strings.TrimPrefix(version[0], "v")
+	ver := version.String()
+	if len(verOverride) > 0 && verOverride[0] != "" {
+		ver = strings.TrimPrefix(verOverride[0], "v")
 	}
 
 	funcMap := template.FuncMap{
