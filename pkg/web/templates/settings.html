@@ -83,14 +83,19 @@
 
         <div id="migration-result-box" style="margin-bottom: 20px;"></div>
 
-        <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; font-size: 13px;">
-          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-            <input type="checkbox" id="update_profile_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
-            <span><strong>{{tr .Lang "settings.mig_opt_profile"}}</strong> (inkl. automatischer Umstellung aller RADIUS-WLANs)</span>
+        <div style="display: flex; flex-direction: column; gap: 14px; margin-bottom: 20px; font-size: 13px;">
+          <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="update_profile_cb" checked style="width: 16px; height: 16px; margin-top: 2px; accent-color: var(--unifi-blue);">
+            <div>
+              <span><strong>{{tr .Lang "settings.mig_opt_profile"}}</strong> (inkl. automatischer Umstellung aller RADIUS-WLANs)</span>
+            </div>
           </label>
-          <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-            <input type="checkbox" id="disable_builtin_cb" checked style="width: 16px; height: 16px; accent-color: var(--unifi-blue);">
-            <span><strong>{{tr .Lang "settings.mig_opt_disable"}}</strong></span>
+          <label style="display: flex; align-items: flex-start; gap: 10px; cursor: pointer;">
+            <input type="checkbox" id="disable_builtin_cb" style="width: 16px; height: 16px; margin-top: 2px; accent-color: var(--unifi-blue);">
+            <div>
+              <span><strong>{{tr .Lang "settings.mig_opt_disable"}}</strong> <span class="badge info" style="font-size: 10px; margin-left: 4px; padding: 2px 6px;">Optional</span></span>
+              <div style="font-size: 11px; color: var(--text-dim); margin-top: 2px;">{{tr .Lang "settings.mig_opt_disable_hint"}}</div>
+            </div>
           </label>
         </div>
 
@@ -589,6 +594,32 @@ function performMigration() {
   })
   .catch(err => {
     document.getElementById('migration-result-box').innerHTML = '<div class="badge reject">Fehler bei Migration: ' + err + '</div>';
+  });
+}
+
+function toggleBuiltinRadius(enable) {
+  const statusBox = document.getElementById('migration-status-box');
+  if (statusBox) {
+    statusBox.innerHTML = '<div style="font-size: 12px; color: var(--text-dim); display: flex; align-items: center; gap: 8px;"><svg class="spinner" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" stroke-dasharray="32" stroke-dashoffset="10"></circle></svg> Aktualisiere UniFi RADIUS-Server-Status...</div>';
+  }
+
+  const formData = new FormData();
+  formData.append('enable', enable ? "1" : "0");
+
+  fetch('/api/unifi/builtin-radius/toggle', {
+    method: 'POST',
+    body: formData
+  })
+  .then(resp => resp.text())
+  .then(html => {
+    if (statusBox) {
+      statusBox.innerHTML = html;
+    }
+  })
+  .catch(err => {
+    if (statusBox) {
+      statusBox.innerHTML = '<div class="badge reject">Fehler beim Ändern des RADIUS-Status: ' + err + '</div>';
+    }
   });
 }
 

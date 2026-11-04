@@ -246,6 +246,7 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 	mux.HandleFunc("/api/unifi/sync", s.requireAuth(s.csrfProtect(s.handleTriggerSync)))
 	mux.HandleFunc("/api/unifi/migration-status", s.requireAuth(s.handleMigrationStatus))
 	mux.HandleFunc("/api/unifi/migrate", s.requireAuth(s.csrfProtect(s.handlePerformMigration)))
+	mux.HandleFunc("/api/unifi/builtin-radius/toggle", s.requireAuth(s.csrfProtect(s.handleToggleBuiltinRadius)))
 
 	// Update check & self-update
 	mux.HandleFunc("/api/update/check", s.requireAuth(s.handleUpdateCheck))
@@ -1475,8 +1476,12 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 			<div style="font-size: 11px; color: var(--text-dim); margin-top: 6px;">
 				%s
 			</div>
-			<div style="display: flex; justify-content: flex-end; font-size: 10px; color: var(--text-dim); margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 4px;">
-				Zuletzt geprüft: %s Uhr
+			<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px;">
+				<button type="button" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="toggleBuiltinRadius(false)">
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+					Integrierten RADIUS jetzt deaktivieren
+				</button>
+				<span style="font-size: 10px; color: var(--text-dim);">Zuletzt geprüft: %s Uhr</span>
 			</div>
 		</div>
 		`, count, template.HTMLEscapeString(secretMasked), sqliteInfo, wlanInfo, tipText, nowStr)
@@ -1501,13 +1506,82 @@ func (s *Server) handleMigrationStatus(w http.ResponseWriter, r *http.Request) {
 				Lokale SQLite-Datenbank: <strong>%d</strong> Clients aktiv (davon <strong>%d</strong> aus UniFi migriert) &bull; UniFi-Accounts: %d
 			</div>
 			%s
-			<div style="display: flex; justify-content: flex-end; font-size: 10px; color: var(--text-dim); margin-top: 8px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 4px;">
-				Zuletzt geprüft: %s Uhr
+			<div style="display: flex; align-items: center; justify-content: space-between; margin-top: 10px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px;">
+				<button type="button" class="btn btn-secondary btn-sm" style="font-size: 11px; padding: 4px 10px;" onclick="toggleBuiltinRadius(true)">
+					<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><path d="M5 12h14"></path><path d="M12 5l7 7-7 7"></path></svg>
+					Integrierten RADIUS reaktivieren
+				</button>
+				<span style="font-size: 10px; color: var(--text-dim);">Zuletzt geprüft: %s Uhr</span>
 			</div>
 		</div>
 		`, totalClients, migratedClients, count, wlanInfo, nowStr)
 		_, _ = w.Write([]byte(html))
 	}
+}
+
+func (s *Server) handleToggleBuiltinRadius(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	enable := r.FormValue("enable") == "1"
+
+	settings, _ := s.db.GetSettings()
+	client, err := unifi.NewClient(unifi.Config{
+		BaseURL:  settings.UniFiURL,
+		AuthMode: settings.UniFiAuthMode,
+		APIKey:   settings.UniFiAPIKey,
+		Username: settings.UniFiUsername,
+		Password: settings.UniFiPassword,
+	})
+	if err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(fmt.Sprintf("<div class='badge reject' style='padding: 10px;'>Verbindungsfehler: %s</div>", template.HTMLEscapeString(err.Error()))))
+		return
+	}
+
+	// If disabling, switch any remaining WLANs first to prevent ObjectReferredBy
+	if !enable {
+		if profiles, pErr := client.ListRadiusProfiles(); pErr == nil {
+			var newProfileID string
+			for _, p := range profiles {
+				if p.Name == "UDM-Internal-RADIUS" {
+					newProfileID = p.ID
+					break
+				}
+			}
+			if newProfileID != "" {
+				if wlans, wErr := client.ListWLANs(); wErr == nil {
+					for _, w := range wlans {
+						if w.RadiusMacAuth || w.RadiusProfileID != "" {
+							_ = client.UpdateWLANRadiusProfile(w.ID, newProfileID)
+						}
+					}
+				}
+			}
+		}
+	}
+
+	if err := client.SetBuiltinRadiusEnabled(enable); err != nil {
+		w.Header().Set("Content-Type", "text/html")
+		_, _ = w.Write([]byte(fmt.Sprintf("<div class='badge reject' style='padding: 10px;'>Aktion fehlgeschlagen: %s</div>", template.HTMLEscapeString(err.Error()))))
+		return
+	}
+
+	stateWord := "deaktiviert"
+	if enable {
+		stateWord = "aktiviert"
+	}
+
+	s.bus.PublishLog(eventbus.LogEvent{
+		Timestamp: time.Now().Format("15:04:05"),
+		Level:     eventbus.LogLevelInfo,
+		Source:    "UNIFI-RADIUS",
+		Message:   fmt.Sprintf("Integrierter UniFi RADIUS Server wurde erfolgreich %s.", stateWord),
+	})
+
+	s.handleMigrationStatus(w, r)
 }
 
 func (s *Server) handlePerformMigration(w http.ResponseWriter, r *http.Request) {

@@ -611,14 +611,14 @@ func stopLocalFreeRadius() error {
 	return errors.New("could not stop freeradius system service locally")
 }
 
-// DisableBuiltinRadius disables UniFi's internal RADIUS server to release UDP port 1812.
-func (c *Client) DisableBuiltinRadius() error {
+// SetBuiltinRadiusEnabled enables or disables UniFi's internal RADIUS server.
+func (c *Client) SetBuiltinRadiusEnabled(enabled bool) error {
 	var apiSuccess bool
 	var lastErr error
 
 	current, err := c.GetRadiusSetting()
 	if err == nil && current != nil {
-		current.Enabled = false
+		current.Enabled = enabled
 		bodyBytes, mErr := json.Marshal(current)
 		if mErr == nil {
 			// 1. Try POST to /set/setting/radius (UniFi standard action endpoint)
@@ -646,7 +646,7 @@ func (c *Client) DisableBuiltinRadius() error {
 				}
 				if json.NewDecoder(resp.Body).Decode(&errResp) == nil && errResp.Meta.Msg != "" {
 					if errResp.Meta.Msg == "api.err.ObjectReferredBy" {
-						lastErr = fmt.Errorf("UniFi blockiert Deaktivierung: %s '%s' referenziert noch das Built-in RADIUS Profil", errResp.Meta.Type, errResp.Meta.Name)
+						lastErr = fmt.Errorf("UniFi blockiert Änderung: %s '%s' referenziert noch das Built-in RADIUS Profil", errResp.Meta.Type, errResp.Meta.Name)
 					} else {
 						lastErr = fmt.Errorf("UniFi Fehler: %s", errResp.Meta.Msg)
 					}
@@ -681,7 +681,7 @@ func (c *Client) DisableBuiltinRadius() error {
 					}
 					if json.NewDecoder(resp.Body).Decode(&errResp) == nil && errResp.Meta.Msg != "" {
 						if errResp.Meta.Msg == "api.err.ObjectReferredBy" {
-							lastErr = fmt.Errorf("UniFi blockiert Deaktivierung: %s '%s' referenziert noch das Built-in RADIUS Profil", errResp.Meta.Type, errResp.Meta.Name)
+							lastErr = fmt.Errorf("UniFi blockiert Änderung: %s '%s' referenziert noch das Built-in RADIUS Profil", errResp.Meta.Type, errResp.Meta.Name)
 						} else {
 							lastErr = fmt.Errorf("UniFi Fehler: %s", errResp.Meta.Msg)
 						}
@@ -710,17 +710,31 @@ func (c *Client) DisableBuiltinRadius() error {
 		lastErr = err
 	}
 
-	// 4. On Linux (UDM), directly stop & disable the freeradius system service
-	localStopErr := stopLocalFreeRadius()
-
-	if apiSuccess || localStopErr == nil {
-		return nil
+	if !enabled {
+		localStopErr := stopLocalFreeRadius()
+		if apiSuccess || localStopErr == nil {
+			return nil
+		}
+	} else {
+		if apiSuccess {
+			return nil
+		}
 	}
 
 	if lastErr != nil {
-		return fmt.Errorf("failed to disable builtin RADIUS server in UniFi: %w", lastErr)
+		return fmt.Errorf("failed to change builtin RADIUS server state in UniFi: %w", lastErr)
 	}
-	return fmt.Errorf("failed to disable builtin RADIUS server in UniFi")
+	return fmt.Errorf("failed to change builtin RADIUS server state in UniFi")
+}
+
+// DisableBuiltinRadius disables UniFi's internal RADIUS server to release UDP port 1812.
+func (c *Client) DisableBuiltinRadius() error {
+	return c.SetBuiltinRadiusEnabled(false)
+}
+
+// EnableBuiltinRadius enables UniFi's internal RADIUS server.
+func (c *Client) EnableBuiltinRadius() error {
+	return c.SetBuiltinRadiusEnabled(true)
 }
 
 // UniFiAccount represents a local RADIUS user or MAB MAC entry configured in UniFi Network.
