@@ -27,6 +27,10 @@ Ein leichtgewichtiger, robuster und autarker **RADIUS-Server in Go**, der direkt
   * Dunkles, modernes Design im UniFi OS Look.
   * **Zero-CDN**: Alle Assets (HTMX, CSS, Icons) sind komplett per Go `embed` in die Binärdatei einkompiliert – funktioniert 100% offline und in isolierten Netzen.
   * **WebSockets Live Monitor**: Eingehende RADIUS-Authentifizierungsanfragen und Server-Logs werden in Echtzeit ohne Neuladen der Seite gestreamt.
+* 🔄 **Integrierte Self-Update Engine**:
+  * **1-Klick-Aktualisierung** direkt im Webinterface mit Live-Fortschritt und automatischem Neuladen.
+  * **Automatische Updates**: Konfigurierbare Wartungsfenster (täglich, wöchentlich oder monatlich zur gewünschten Uhrzeit).
+  * **Kryptografische Sicherheit**: Streaming-Validierung der SHA-256 Prüfsummen gegen GitHub Releases (`checksums.txt`) verhindert manipulierte Binaries.
 * 💾 **Pure-Go SQLite**: Lokale Speicherung in `/data/unifi-radius/radius.db` ohne CGO-Abhängigkeit.
 
 ---
