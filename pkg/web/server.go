@@ -193,6 +193,13 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 
 	updaterSvc := updater.NewService(ver, "MaxW1337", "unifi-radius-server")
 
+	sessions := make(map[string]time.Time)
+	if db != nil {
+		if loaded, err := db.LoadActiveSessions(); err == nil && loaded != nil {
+			sessions = loaded
+		}
+	}
+
 	s := &Server{
 		db:         db,
 		bus:        bus,
@@ -201,7 +208,7 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 		backupSvc:  backup.NewService(db, bus),
 		updater:    updaterSvc,
 		pages:      pages,
-		sessions:   make(map[string]time.Time),
+		sessions:   sessions,
 		limiter:    newLoginLimiter(),
 		port:       port,
 		version:    ver,
@@ -457,15 +464,54 @@ func (s *Server) isValidSession(token string) bool {
 		return false
 	}
 	s.sessionsMu.Lock()
-	defer s.sessionsMu.Unlock()
 	expiry, exists := s.sessions[token]
+	s.sessionsMu.Unlock()
+
 	if !exists {
-		return false
+		if s.db != nil {
+			exp, found, err := s.db.GetSessionExpiry(token)
+			if err == nil && found && time.Now().Before(exp) {
+				s.sessionsMu.Lock()
+				s.sessions[token] = exp
+				s.sessionsMu.Unlock()
+				expiry = exp
+				exists = true
+			}
+		}
+		if !exists {
+			return false
+		}
 	}
-	if time.Now().After(expiry) {
+
+	now := time.Now()
+	if now.After(expiry) {
+		s.sessionsMu.Lock()
 		delete(s.sessions, token)
+		s.sessionsMu.Unlock()
+		if s.db != nil {
+			go func(tok string) { _ = s.db.DeleteSession(tok) }(token)
+		}
 		return false
 	}
+
+	// Sliding expiration: if less than half of the session duration remains, extend it
+	durationDays := 30
+	if s.db != nil {
+		if st, err := s.db.GetSettings(); err == nil && st.WebSessionDurationDays > 0 {
+			durationDays = st.WebSessionDurationDays
+		}
+	}
+	totalDuration := time.Duration(durationDays) * 24 * time.Hour
+	if time.Until(expiry) < totalDuration/2 {
+		newExpiry := now.Add(totalDuration)
+		s.sessionsMu.Lock()
+		s.sessions[token] = newExpiry
+		s.sessionsMu.Unlock()
+		if s.db != nil {
+			go func(tok string, exp time.Time) { _ = s.db.SaveSession(tok, exp) }(token, newExpiry)
+		}
+	}
+
 	return true
 }
 
@@ -474,18 +520,31 @@ func (s *Server) createSession() string {
 	_, _ = rand.Read(b)
 	token := hex.EncodeToString(b)
 
-	s.sessionsMu.Lock()
-	defer s.sessionsMu.Unlock()
-
-	// Clean up expired sessions
+	durationDays := 30
+	if s.db != nil {
+		if st, err := s.db.GetSettings(); err == nil && st.WebSessionDurationDays > 0 {
+			durationDays = st.WebSessionDurationDays
+		}
+	}
 	now := time.Now()
+	expiresAt := now.Add(time.Duration(durationDays) * 24 * time.Hour)
+
+	s.sessionsMu.Lock()
+	// Clean up expired in-memory sessions
 	for k, exp := range s.sessions {
 		if now.After(exp) {
 			delete(s.sessions, k)
 		}
 	}
+	s.sessions[token] = expiresAt
+	s.sessionsMu.Unlock()
 
-	s.sessions[token] = now.Add(24 * time.Hour)
+	if s.db != nil {
+		go func(tok string, exp time.Time) {
+			_ = s.db.SaveSession(tok, exp)
+		}(token, expiresAt)
+	}
+
 	return token
 }
 
@@ -524,11 +583,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			if s.limiter != nil {
 				s.limiter.recordSuccess(clientIP)
 			}
+			durationDays := 30
+			if settings.WebSessionDurationDays > 0 {
+				durationDays = settings.WebSessionDurationDays
+			}
+			maxAge := durationDays * 24 * 3600
+			now := time.Now()
 			token := s.createSession()
 			http.SetCookie(w, &http.Cookie{
 				Name:     "session_id",
 				Value:    token,
 				Path:     "/",
+				MaxAge:   maxAge,
+				Expires:  now.Add(time.Duration(durationDays) * 24 * time.Hour),
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 				Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
@@ -543,11 +610,19 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			if s.limiter != nil {
 				s.limiter.recordSuccess(clientIP)
 			}
+			durationDays := 30
+			if settings.WebSessionDurationDays > 0 {
+				durationDays = settings.WebSessionDurationDays
+			}
+			maxAge := durationDays * 24 * 3600
+			now := time.Now()
 			token := s.createSession()
 			http.SetCookie(w, &http.Cookie{
 				Name:     "session_id",
 				Value:    token,
 				Path:     "/",
+				MaxAge:   maxAge,
+				Expires:  now.Add(time.Duration(durationDays) * 24 * time.Hour),
 				HttpOnly: true,
 				SameSite: http.SameSiteLaxMode,
 				Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
@@ -611,16 +686,20 @@ func (s *Server) handleSetLanguage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("session_id")
-	if err == nil {
+	if err == nil && cookie.Value != "" {
 		s.sessionsMu.Lock()
 		delete(s.sessions, cookie.Value)
 		s.sessionsMu.Unlock()
+		if s.db != nil {
+			_ = s.db.DeleteSession(cookie.Value)
+		}
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_id",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
+		Expires:  time.Unix(0, 0),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
@@ -1690,6 +1769,11 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 		settings.WebPort = wPort
 	} else {
 		settings.WebPort = 9182
+	}
+	if sDays, err := strconv.Atoi(r.FormValue("web_session_duration_days")); err == nil && sDays > 0 {
+		settings.WebSessionDurationDays = sDays
+	} else if settings.WebSessionDurationDays <= 0 {
+		settings.WebSessionDurationDays = 30
 	}
 	if retDays, err := strconv.Atoi(r.FormValue("log_retention_days")); err == nil {
 		settings.LogRetentionDays = retDays

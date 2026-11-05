@@ -39,6 +39,11 @@ func (db *DB) GetSettings() (*models.Settings, error) {
 		webPort = 9182
 	}
 
+	sessionDays, _ := strconv.Atoi(sMap["web_session_duration_days"])
+	if sessionDays <= 0 {
+		sessionDays = 30
+	}
+
 	syncInterval, _ := strconv.Atoi(sMap["unifi_sync_interval"])
 	if syncInterval <= 0 {
 		syncInterval = 5
@@ -126,6 +131,7 @@ func (db *DB) GetSettings() (*models.Settings, error) {
 		RadiusDebugMode:           sMap["radius_debug_mode"] == "true",
 		AutoDisconnectOnChange:    autoDisconnect,
 		WebPort:                   webPort,
+		WebSessionDurationDays:   sessionDays,
 		DefenseEnabled:            defenseEnabled,
 		DefenseMaxFailures:        defenseMaxFailures,
 		DefenseWindowSeconds:      defenseWindowSec,
@@ -188,6 +194,7 @@ func (db *DB) UpdateSettings(s *models.Settings) error {
 		"defense_ban_duration_minutes": strconv.Itoa(s.DefenseBanDurationMinutes),
 		"defense_mac_spoof_detection":  strconv.FormatBool(s.DefenseMACSpoofDetection),
 		"web_port":                     strconv.Itoa(s.WebPort),
+		"web_session_duration_days":    strconv.Itoa(s.WebSessionDurationDays),
 		"unifi_url":            s.UniFiURL,
 		"unifi_auth_mode":      s.UniFiAuthMode,
 		"unifi_api_key":        s.UniFiAPIKey,

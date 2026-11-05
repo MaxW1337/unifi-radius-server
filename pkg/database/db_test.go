@@ -397,3 +397,57 @@ func TestRadiusDebugModeSettings(t *testing.T) {
 	}
 }
 
+func TestWebSessionsPersistence(t *testing.T) {
+	db := setupTestDB(t)
+
+	tokenActive := "session-token-active-123"
+	tokenExpired := "session-token-expired-456"
+
+	now := time.Now().UTC()
+	expActive := now.Add(30 * 24 * time.Hour)
+	expExpired := now.Add(-1 * time.Hour)
+
+	// 1. Save sessions
+	if err := db.SaveSession(tokenActive, expActive); err != nil {
+		t.Fatalf("SaveSession active failed: %v", err)
+	}
+	if err := db.SaveSession(tokenExpired, expExpired); err != nil {
+		t.Fatalf("SaveSession expired failed: %v", err)
+	}
+
+	// 2. Load active sessions - should only contain active
+	loaded, err := db.LoadActiveSessions()
+	if err != nil {
+		t.Fatalf("LoadActiveSessions failed: %v", err)
+	}
+	if _, ok := loaded[tokenActive]; !ok {
+		t.Errorf("Expected tokenActive to be loaded")
+	}
+	if _, ok := loaded[tokenExpired]; ok {
+		t.Errorf("Expected tokenExpired to be pruned/omitted")
+	}
+
+	// 3. Update active session expiration
+	expExtended := now.Add(60 * 24 * time.Hour)
+	if err := db.SaveSession(tokenActive, expExtended); err != nil {
+		t.Fatalf("SaveSession update failed: %v", err)
+	}
+	gotExp, found, err := db.GetSessionExpiry(tokenActive)
+	if err != nil || !found {
+		t.Fatalf("GetSessionExpiry failed: found=%v, err=%v", found, err)
+	}
+	if gotExp.Sub(expExtended).Abs() > time.Second {
+		t.Errorf("Expected expiration ~%v, got %v", expExtended, gotExp)
+	}
+
+	// 4. Delete session
+	if err := db.DeleteSession(tokenActive); err != nil {
+		t.Fatalf("DeleteSession failed: %v", err)
+	}
+	_, foundAfterDelete, _ := db.GetSessionExpiry(tokenActive)
+	if foundAfterDelete {
+		t.Errorf("Expected session to be deleted")
+	}
+}
+
+

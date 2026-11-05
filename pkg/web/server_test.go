@@ -1102,6 +1102,139 @@ func TestSwitchAndPortRenderingInTablesAndLiveFeed(t *testing.T) {
 	}
 }
 
+func TestSessionLongevityAndCookiePersistence(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "sessions_test.db")
+	db, err := database.Open(dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open test db: %v", err)
+	}
+	defer db.Close()
+
+	bus := eventbus.NewBus(100)
+	srv, err := NewServer(db, bus, nil, 9991)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	// 1. Initial Login Setup
+	formData := url.Values{"password": {"adminpass123"}}
+	reqPost := httptest.NewRequest(http.MethodPost, "/login", strings.NewReader(formData.Encode()))
+	reqPost.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrPost := httptest.NewRecorder()
+	srv.handleLogin(rrPost, reqPost)
+
+	if rrPost.Code != http.StatusSeeOther {
+		t.Fatalf("Expected 303 redirect, got %d", rrPost.Code)
+	}
+
+	cookies := rrPost.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == "session_id" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("Expected session_id cookie set")
+	}
+
+	// Verify Cookie MaxAge and Expires are set for longevity (30 days default)
+	expectedMaxAge := 30 * 24 * 3600
+	if sessionCookie.MaxAge != expectedMaxAge {
+		t.Errorf("Expected cookie MaxAge=%d, got %d", expectedMaxAge, sessionCookie.MaxAge)
+	}
+	if sessionCookie.Expires.Before(time.Now().Add(29 * 24 * time.Hour)) {
+		t.Errorf("Expected cookie Expires in ~30 days, got %v", sessionCookie.Expires)
+	}
+
+	token := sessionCookie.Value
+
+	// Give the async DB save goroutine a moment
+	time.Sleep(50 * time.Millisecond)
+
+	// 2. Verify Session persisted in SQLite
+	exp, found, err := db.GetSessionExpiry(token)
+	if err != nil || !found {
+		t.Fatalf("Expected session %s to be persisted in DB: found=%v, err=%v", token, found, err)
+	}
+	if exp.Before(time.Now().Add(29 * 24 * time.Hour)) {
+		t.Errorf("Expected DB expiration in ~30 days, got %v", exp)
+	}
+
+	// 3. Simulate Server Restart: New server instance with same DB loads session
+	srv2, err := NewServer(db, bus, nil, 9992)
+	if err != nil {
+		t.Fatalf("NewServer 2 failed: %v", err)
+	}
+	if !srv2.isValidSession(token) {
+		t.Errorf("Expected session %s to remain valid after server restart", token)
+	}
+
+	// 4. Test Sliding Expiration
+	// Artificially age the session to 5 days left (< 15 days, which is half of 30 days)
+	nearExpiry := time.Now().Add(5 * 24 * time.Hour)
+	_ = db.SaveSession(token, nearExpiry)
+	srv2.sessionsMu.Lock()
+	srv2.sessions[token] = nearExpiry
+	srv2.sessionsMu.Unlock()
+
+	// Calling isValidSession should detect < 50% left and extend back to 30 days
+	if !srv2.isValidSession(token) {
+		t.Fatal("Expected session to be valid before extension")
+	}
+	time.Sleep(50 * time.Millisecond)
+
+	srv2.sessionsMu.RLock()
+	refreshedExp := srv2.sessions[token]
+	srv2.sessionsMu.RUnlock()
+	if refreshedExp.Before(time.Now().Add(29 * 24 * time.Hour)) {
+		t.Errorf("Expected sliding expiration to extend session to ~30 days, got %v", refreshedExp)
+	}
+
+	// 5. Test Logout deletes from DB
+	reqLogout := httptest.NewRequest(http.MethodGet, "/logout", nil)
+	reqLogout.AddCookie(sessionCookie)
+	rrLogout := httptest.NewRecorder()
+	srv2.handleLogout(rrLogout, reqLogout)
+
+	time.Sleep(20 * time.Millisecond)
+	_, foundAfterLogout, _ := db.GetSessionExpiry(token)
+	if foundAfterLogout {
+		t.Errorf("Expected session to be deleted from DB on logout")
+	}
+	if srv2.isValidSession(token) {
+		t.Errorf("Expected session to be invalid after logout")
+	}
+
+	// 6. Test Settings Save for web_session_duration_days
+	form := url.Values{
+		"unifi_url":                  {"https://127.0.0.1"},
+		"unifi_auth_mode":            {"apikey"},
+		"unifi_sync_interval":        {"5"},
+		"global_shared_secret":       {"testsecret"},
+		"radius_auth_port":           {"1812"},
+		"default_allow_vlan":         {"10"},
+		"web_port":                   {"9182"},
+		"web_session_duration_days":  {"60"},
+		"log_retention_days":         {"30"},
+	}
+	reqSave := httptest.NewRequest(http.MethodPost, "/settings/save", strings.NewReader(form.Encode()))
+	reqSave.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrSave := httptest.NewRecorder()
+	srv2.handleSaveSettings(rrSave, reqSave)
+
+	settings, err := db.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings failed: %v", err)
+	}
+	if settings.WebSessionDurationDays != 60 {
+		t.Errorf("Expected WebSessionDurationDays=60, got %d", settings.WebSessionDurationDays)
+	}
+}
+
+
 
 
 

@@ -148,6 +148,12 @@ func (db *DB) migrate() error {
 		message TEXT NOT NULL
 	);
 
+	CREATE TABLE IF NOT EXISTS web_sessions (
+		token TEXT PRIMARY KEY,
+		expires_at DATETIME NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_web_sessions_expires ON web_sessions(expires_at);
 	CREATE INDEX IF NOT EXISTS idx_auth_logs_timestamp ON auth_logs(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_auth_logs_mac ON auth_logs(client_mac);
 	CREATE INDEX IF NOT EXISTS idx_clients_mac ON clients(mac_address);
@@ -186,6 +192,7 @@ func (db *DB) seedDefaults() error {
 		"defense_ban_duration_minutes": "15",
 		"defense_mac_spoof_detection": "true",
 		"web_port":                  "9182",
+		"web_session_duration_days": "30",
 		"unifi_url":            "https://127.0.0.1",
 		"unifi_auth_mode":      "apikey",
 		"unifi_api_key":        "",

@@ -160,6 +160,7 @@ type Settings struct {
 	RadiusDebugMode        bool             `json:"radius_debug_mode"`
 	AutoDisconnectOnChange bool             `json:"auto_disconnect_on_change"`
 	WebPort                int              `json:"web_port"`
+	WebSessionDurationDays int              `json:"web_session_duration_days"`
 
 	// Intrusion Defense & Auto-Quarantine (Fail2ban)
 	DefenseEnabled            bool `json:"defense_enabled"`

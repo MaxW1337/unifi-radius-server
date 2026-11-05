@@ -278,6 +278,12 @@
         </div>
 
         <div class="form-group">
+          <label class="form-label">{{tr .Lang "settings.label_session_duration"}}</label>
+          <input type="number" name="web_session_duration_days" value="{{if .Settings.WebSessionDurationDays}}{{.Settings.WebSessionDurationDays}}{{else}}30{{end}}" min="1" max="365" class="form-control" style="width: 140px;">
+          <div class="form-text">{{tr .Lang "settings.session_duration_hint"}}</div>
+        </div>
+
+        <div class="form-group">
           <label class="form-label">{{tr .Lang "settings.label_admin_pass"}}</label>
           <div class="password-wrapper">
             <input type="password" name="web_admin_password" placeholder="{{tr .Lang "settings.admin_pass_ph"}}" class="form-control">
