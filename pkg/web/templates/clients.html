@@ -107,11 +107,23 @@
               {{if .Description}}{{.Description}}{{else}}<span style="color: var(--text-dim);">-</span>{{end}}
             </td>
             <td>
-              {{if or .UniFiName .UniFiHostname .UniFiVendor}}
-                <div><strong>{{if .UniFiName}}{{.UniFiName}}{{else}}{{.UniFiHostname}}{{end}}</strong></div>
-                <div style="font-size: 11px; color: var(--text-dim);">
-                  {{if .UniFiVendor}}{{.UniFiVendor}}{{end}}
-                  {{if .UniFiSwitchPort}} • Port {{.UniFiSwitchPort}}{{end}}
+              {{if or .UniFiName .UniFiHostname .UniFiVendor .UniFiSwitchName}}
+                <div>
+                  <strong>{{if .UniFiName}}{{.UniFiName}}{{else if .UniFiHostname}}{{.UniFiHostname}}{{else if .UniFiVendor}}{{.UniFiVendor}}{{else}}Gerät{{end}}</strong>
+                  {{if .UniFiIP}}<span style="font-size: 11px; color: var(--text-dim); margin-left: 4px;">({{.UniFiIP}})</span>{{end}}
+                </div>
+                <div style="font-size: 11px; color: var(--text-dim); display: flex; align-items: center; gap: 4px; flex-wrap: wrap; margin-top: 2px;">
+                  {{if .UniFiVendor}}<span>{{.UniFiVendor}}</span>{{end}}
+                  {{if .UniFiSwitchName}}
+                    {{if .UniFiVendor}}<span>•</span>{{end}}
+                    <span style="color: var(--text-main); font-weight: 500;">
+                      {{if .UniFiIsWired}}🔌 {{.UniFiSwitchName}}{{if .UniFiSwitchPort}} [Port {{.UniFiSwitchPort}}]{{end}}
+                      {{else}}📶 {{.UniFiSwitchName}}{{end}}
+                    </span>
+                  {{else if .UniFiSwitchPort}}
+                    {{if .UniFiVendor}}<span>•</span>{{end}}
+                    <span style="color: var(--text-main); font-weight: 500;">Port {{.UniFiSwitchPort}}</span>
+                  {{end}}
                 </div>
               {{else}}
                 <span style="color: var(--text-dim); font-size: 12px;">{{tr $.Lang "clients.no_unifi_info"}}</span>

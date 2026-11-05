@@ -49,6 +49,7 @@ const (
 	AttrTunnelPrivateGroupID = 81
 	AttrEAPMessage           = 79
 	AttrMessageAuthenticator = 80
+	AttrNASPortID            = 87
 )
 
 var (

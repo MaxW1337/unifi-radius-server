@@ -168,6 +168,41 @@ func (s *Service) handleAuthEvent(ctx context.Context, a models.AuthLog) {
 
 	allowedEvents := strings.ToLower(settings.NotifyEvents)
 
+	// Resolve Switch / AP name and port
+	switchName := a.NASName
+	switchPort := a.NASPort
+	if a.ClientMAC != "" {
+		if c, err := s.db.GetClientByMAC(a.ClientMAC); err == nil && c != nil {
+			if switchName == "" || switchName == a.NASIP || switchName == "UniFi Device" {
+				if c.UniFiSwitchName != "" {
+					switchName = c.UniFiSwitchName
+				}
+			}
+			if switchPort == "" && c.UniFiSwitchPort != "" {
+				switchPort = c.UniFiSwitchPort
+			}
+		}
+	}
+	if switchName == "" || switchName == "UniFi Device" {
+		if nas, err := s.db.FindNASByIP(a.NASIP); err == nil && nas != nil && nas.Name != "" {
+			switchName = nas.Name
+		} else if a.NASIP != "" {
+			switchName = a.NASIP
+		}
+	}
+	if switchPort == "" && a.NASPort != "" {
+		switchPort = a.NASPort
+	}
+
+	locStr := ""
+	if switchName != "" && switchPort != "" {
+		locStr = fmt.Sprintf(" an %s (Port %s)", switchName, switchPort)
+	} else if switchName != "" {
+		locStr = fmt.Sprintf(" an %s", switchName)
+	} else if a.NASIP != "" {
+		locStr = fmt.Sprintf(" an %s", a.NASIP)
+	}
+
 	// Check if this was a pending client rejection or auto-discovery
 	if strings.Contains(strings.ToLower(a.Reason), "pending") || strings.Contains(strings.ToLower(a.Reason), "unknown mac") {
 		if strings.Contains(allowedEvents, EventPendingDevice) {
@@ -176,12 +211,14 @@ func (s *Service) handleAuthEvent(ctx context.Context, a models.AuthLog) {
 				ev := NotificationEvent{
 					Type:           EventPendingDevice,
 					Title:          "Neues Gerät erkannt (Pending Approval)",
-					Message:        fmt.Sprintf("Gerät %s an %s:%s fordert Zugriff an.", a.ClientMAC, a.NASIP, a.NASPort),
+					Message:        fmt.Sprintf("Gerät %s%s fordert Zugriff an.", a.ClientMAC, locStr),
 					ClientMAC:      a.ClientMAC,
 					Username:       a.Username,
 					VLANID:         a.VLANID,
 					EnrichedVendor: a.EnrichedVendor,
 					EnrichedName:   a.EnrichedName,
+					SwitchName:     switchName,
+					SwitchPort:     switchPort,
 					Timestamp:      a.Timestamp,
 				}
 				s.Dispatch(ctx, ev)
@@ -201,10 +238,12 @@ func (s *Service) handleAuthEvent(ctx context.Context, a models.AuthLog) {
 			ev := NotificationEvent{
 				Type:           EventAuthReject,
 				Title:          "RADIUS Authentifizierung ABGELEHNT",
-				Message:        fmt.Sprintf("Anfrage von '%s' wurde abgewiesen: %s", ident, a.Reason),
+				Message:        fmt.Sprintf("Anfrage von '%s'%s wurde abgewiesen: %s", ident, locStr, a.Reason),
 				ClientMAC:      a.ClientMAC,
 				Username:       a.Username,
 				EnrichedVendor: a.EnrichedVendor,
+				SwitchName:     switchName,
+				SwitchPort:     switchPort,
 				Timestamp:      a.Timestamp,
 			}
 			s.Dispatch(ctx, ev)

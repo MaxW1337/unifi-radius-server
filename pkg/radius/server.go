@@ -353,9 +353,20 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 	// 2. Extract Packet Attributes
 	rawUserName := req.GetString(AttrUserName)
 	callingStationID := req.GetString(AttrCallingStationID)
-	nasPort := req.GetString(AttrNASPort)
-	if nasPort == "" {
-		nasPort = strconv.Itoa(int(binaryToUint(req.GetAttribute(AttrNASPort))))
+
+	// Check NAS-Identifier if NAS name is still generic
+	if nasName == "UniFi Device" || nasName == "" {
+		if idStr := strings.TrimSpace(req.GetString(AttrNASIdentifier)); idStr != "" {
+			nasName = idStr
+		}
+	}
+
+	// Extract NAS-Port safely: check NAS-Port-Id (Attr 87) first, then binary NAS-Port (Attr 5)
+	var nasPort string
+	if portID := strings.TrimSpace(req.GetString(AttrNASPortID)); portID != "" {
+		nasPort = portID
+	} else if rawPort := req.GetAttribute(AttrNASPort); len(rawPort) > 0 {
+		nasPort = strconv.Itoa(int(binaryToUint(rawPort)))
 	}
 
 	// Determine client identifier (MAB vs User)
@@ -375,6 +386,15 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 
 	if norm, err := utils.NormalizeMAC(macCandidate); err == nil {
 		clientMAC = norm
+		// If switch or port is not provided in RADIUS attributes, check if known from UniFi sync
+		if c, err := s.db.GetClientByMAC(clientMAC); err == nil && c != nil {
+			if (nasName == "UniFi Device" || nasName == "") && c.UniFiSwitchName != "" {
+				nasName = c.UniFiSwitchName
+			}
+			if nasPort == "" && c.UniFiSwitchPort != "" {
+				nasPort = c.UniFiSwitchPort
+			}
+		}
 	}
 	username = strings.TrimSpace(rawUserName)
 
@@ -594,6 +614,7 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 		Username:       username,
 		NASIP:          remoteIP,
 		NASPort:        nasPort,
+		NASName:        nasName,
 		AuthType:       authType,
 		Status:         status,
 		VLANID:         assignedVLAN,

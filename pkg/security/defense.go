@@ -370,3 +370,4 @@ func (dm *DefenseManager) resolveTarget(mac, username string) (string, string) {
 	}
 	return "", ""
 }
+

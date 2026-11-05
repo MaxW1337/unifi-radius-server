@@ -100,6 +100,18 @@ func (dc *DiscordClient) SendEmbedMessage(ctx context.Context, ev NotificationEv
 			"value":  fmt.Sprintf("%s (Port %s)", ev.SwitchName, ev.SwitchPort),
 			"inline": true,
 		})
+	} else if ev.SwitchName != "" {
+		fields = append(fields, map[string]interface{}{
+			"name":   "Switch / AP",
+			"value":  ev.SwitchName,
+			"inline": true,
+		})
+	} else if ev.SwitchPort != "" {
+		fields = append(fields, map[string]interface{}{
+			"name":   "Port",
+			"value":  ev.SwitchPort,
+			"inline": true,
+		})
 	}
 	if ev.VLANID != nil {
 		fields = append(fields, map[string]interface{}{

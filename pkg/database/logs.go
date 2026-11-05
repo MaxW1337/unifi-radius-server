@@ -16,12 +16,12 @@ func (db *DB) InsertAuthLog(l *models.AuthLog) error {
 
 	res, err := db.Exec(`
 		INSERT INTO auth_logs (
-			timestamp, client_mac, username, nas_ip, nas_port, auth_type,
+			timestamp, client_mac, username, nas_ip, nas_port, nas_name, auth_type,
 			status, vlan_id, reason, latency_ms, enriched_name, enriched_vendor,
 			raw_request, raw_response
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`,
-		l.Timestamp.UTC(), l.ClientMAC, l.Username, l.NASIP, l.NASPort, string(l.AuthType),
+		l.Timestamp.UTC(), l.ClientMAC, l.Username, l.NASIP, l.NASPort, l.NASName, string(l.AuthType),
 		l.Status, l.VLANID, l.Reason, l.LatencyMS, l.EnrichedName, l.EnrichedVendor,
 		l.RawRequest, l.RawResponse,
 	)
@@ -57,8 +57,8 @@ func (db *DB) ListAuthLogs(limit, offset int, statusFilter, queryFilter string) 
 			macPatterns = append(macPatterns, "%"+strings.Join(parts, ":")+"%")
 		}
 
-		clause := "(client_mac LIKE ? OR username LIKE ? OR enriched_name LIKE ? OR enriched_vendor LIKE ? OR nas_ip LIKE ? OR reason LIKE ?)"
-		clauseArgs := []interface{}{pattern, pattern, pattern, pattern, pattern, pattern}
+		clause := "(client_mac LIKE ? OR username LIKE ? OR enriched_name LIKE ? OR enriched_vendor LIKE ? OR nas_ip LIKE ? OR nas_name LIKE ? OR reason LIKE ?)"
+		clauseArgs := []interface{}{pattern, pattern, pattern, pattern, pattern, pattern, pattern}
 		for _, mp := range macPatterns {
 			clause = "(" + clause + " OR client_mac LIKE ?)"
 			clauseArgs = append(clauseArgs, mp)
@@ -82,7 +82,7 @@ func (db *DB) ListAuthLogs(limit, offset int, statusFilter, queryFilter string) 
 		limit = 50
 	}
 	querySQL := fmt.Sprintf(`
-		SELECT id, timestamp, client_mac, username, nas_ip, nas_port, auth_type,
+		SELECT id, timestamp, client_mac, username, nas_ip, nas_port, COALESCE(nas_name, ''), auth_type,
 		       status, vlan_id, reason, latency_ms, enriched_name, enriched_vendor,
 		       COALESCE(raw_request, ''), COALESCE(raw_response, '')
 		FROM auth_logs %s
@@ -102,7 +102,7 @@ func (db *DB) ListAuthLogs(limit, offset int, statusFilter, queryFilter string) 
 		var l models.AuthLog
 		var authType string
 		err := rows.Scan(
-			&l.ID, &l.Timestamp, &l.ClientMAC, &l.Username, &l.NASIP, &l.NASPort,
+			&l.ID, &l.Timestamp, &l.ClientMAC, &l.Username, &l.NASIP, &l.NASPort, &l.NASName,
 			&authType, &l.Status, &l.VLANID, &l.Reason, &l.LatencyMS,
 			&l.EnrichedName, &l.EnrichedVendor,
 			&l.RawRequest, &l.RawResponse,
@@ -120,7 +120,7 @@ func (db *DB) ListAuthLogs(limit, offset int, statusFilter, queryFilter string) 
 // GetAuthLogByID retrieves a single authentication log with raw request/response details.
 func (db *DB) GetAuthLogByID(id int64) (*models.AuthLog, error) {
 	row := db.QueryRow(`
-		SELECT id, timestamp, client_mac, username, nas_ip, nas_port, auth_type,
+		SELECT id, timestamp, client_mac, username, nas_ip, nas_port, COALESCE(nas_name, ''), auth_type,
 		       status, vlan_id, reason, latency_ms, enriched_name, enriched_vendor,
 		       COALESCE(raw_request, ''), COALESCE(raw_response, '')
 		FROM auth_logs
@@ -130,7 +130,7 @@ func (db *DB) GetAuthLogByID(id int64) (*models.AuthLog, error) {
 	var l models.AuthLog
 	var authType string
 	err := row.Scan(
-		&l.ID, &l.Timestamp, &l.ClientMAC, &l.Username, &l.NASIP, &l.NASPort,
+		&l.ID, &l.Timestamp, &l.ClientMAC, &l.Username, &l.NASIP, &l.NASPort, &l.NASName,
 		&authType, &l.Status, &l.VLANID, &l.Reason, &l.LatencyMS,
 		&l.EnrichedName, &l.EnrichedVendor,
 		&l.RawRequest, &l.RawResponse,

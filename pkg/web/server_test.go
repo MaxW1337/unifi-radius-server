@@ -1024,6 +1024,85 @@ func TestIntrusionDefenseSettingsAndUnban(t *testing.T) {
 	}
 }
 
+func TestSwitchAndPortRenderingInTablesAndLiveFeed(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	// 1. Verify Clients table shows Switch name and Port
+	testMAC := "00:AA:BB:CC:DD:EE"
+	_ = db.CreateClient(&models.Client{
+		MACAddress:      testMAC,
+		Status:          models.ClientStatusActive,
+		UniFiName:       "Test-Switch-Client",
+		UniFiSwitchName: "USW-48-G2",
+		UniFiSwitchPort: "18",
+		UniFiIsWired:    true,
+	})
+
+	reqClients := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	rrClients := httptest.NewRecorder()
+	srv.handleClients(rrClients, reqClients)
+	if rrClients.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from /clients, got %d", rrClients.Code)
+	}
+	bodyClients := rrClients.Body.String()
+	if !strings.Contains(bodyClients, "USW-48-G2") {
+		t.Errorf("Expected Clients table to contain SwitchName 'USW-48-G2', got:\n%s", bodyClients)
+	}
+	if !strings.Contains(bodyClients, "[Port 18]") {
+		t.Errorf("Expected Clients table to contain '[Port 18]'")
+	}
+
+	// 2. Verify Dashboard table renders NASName and Port
+	_ = db.InsertAuthLog(&models.AuthLog{
+		Timestamp:      time.Now().UTC(),
+		ClientMAC:      testMAC,
+		Status:         "ACCEPT",
+		NASIP:          "192.168.13.2",
+		NASPort:        "18",
+		NASName:        "USW-48-G2",
+		Reason:         "Test MAB auth",
+		LatencyMS:      1.5,
+	})
+
+	reqDash := httptest.NewRequest(http.MethodGet, "/", nil)
+	rrDash := httptest.NewRecorder()
+	srv.handleDashboard(rrDash, reqDash)
+	if rrDash.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from /, got %d", rrDash.Code)
+	}
+	bodyDash := rrDash.Body.String()
+	if !strings.Contains(bodyDash, "USW-48-G2") {
+		t.Errorf("Expected Dashboard table to display 'USW-48-G2', got:\n%s", bodyDash)
+	}
+	if !strings.Contains(bodyDash, "Port 18") {
+		t.Errorf("Expected Dashboard table to display 'Port 18'")
+	}
+	if !strings.Contains(bodyDash, "192.168.13.2") {
+		t.Errorf("Expected Dashboard table to display NAS IP '192.168.13.2'")
+	}
+
+	// 3. Verify WebSocket Live Feed formatting
+	htmlLive := formatAuthRowHTML(models.AuthLog{
+		ID:             999,
+		Timestamp:      time.Now().UTC(),
+		ClientMAC:      testMAC,
+		Status:         "ACCEPT",
+		NASIP:          "192.168.13.2",
+		NASPort:        "18",
+		NASName:        "USW-48-G2",
+		Reason:         "Live test",
+		LatencyMS:      2.0,
+	})
+	if !strings.Contains(htmlLive, "USW-48-G2") {
+		t.Errorf("Expected live feed HTML to contain 'USW-48-G2', got:\n%s", htmlLive)
+	}
+	if !strings.Contains(htmlLive, "Port 18 • 192.168.13.2") {
+		t.Errorf("Expected live feed HTML to contain 'Port 18 • 192.168.13.2'")
+	}
+}
+
+
 
 
 

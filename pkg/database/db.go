@@ -128,6 +128,7 @@ func (db *DB) migrate() error {
 		username TEXT DEFAULT '',
 		nas_ip TEXT DEFAULT '',
 		nas_port TEXT DEFAULT '',
+		nas_name TEXT DEFAULT '',
 		auth_type TEXT NOT NULL,
 		status TEXT NOT NULL,
 		vlan_id INTEGER,
@@ -166,6 +167,7 @@ func (db *DB) migrate() error {
 	_, _ = db.Exec("ALTER TABLE clients ADD COLUMN unifi_is_wired BOOLEAN DEFAULT 0;")
 	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN raw_request TEXT DEFAULT '';")
 	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN raw_response TEXT DEFAULT '';")
+	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN nas_name TEXT DEFAULT '';")
 
 	return nil
 }

@@ -227,6 +227,10 @@ func formatTelegramEventHTML(ev NotificationEvent) string {
 	}
 	if ev.SwitchName != "" && ev.SwitchPort != "" {
 		sb.WriteString(fmt.Sprintf("• <b>Switch:</b> %s (Port %s)\n", html.EscapeString(ev.SwitchName), html.EscapeString(ev.SwitchPort)))
+	} else if ev.SwitchName != "" {
+		sb.WriteString(fmt.Sprintf("• <b>Switch/AP:</b> %s\n", html.EscapeString(ev.SwitchName)))
+	} else if ev.SwitchPort != "" {
+		sb.WriteString(fmt.Sprintf("• <b>Port:</b> %s\n", html.EscapeString(ev.SwitchPort)))
 	}
 	if ev.VLANID != nil {
 		vlanName := ev.VLANName

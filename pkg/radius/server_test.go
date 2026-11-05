@@ -3,6 +3,7 @@ package radius
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"net"
 	"path/filepath"
@@ -504,4 +505,53 @@ func TestServerDebugModeToggle(t *testing.T) {
 		t.Errorf("Expected debugMode false, got true")
 	}
 }
+
+func TestNASPortAndNASNameExtraction(t *testing.T) {
+	tmpDir := t.TempDir()
+	db, err := database.Open(filepath.Join(tmpDir, "radius_port.db"))
+	if err != nil {
+		t.Fatalf("Failed to open test db: %v", err)
+	}
+	defer db.Close()
+
+	bus := eventbus.NewBus(10)
+	srv := NewServer(db, bus, 18199)
+	_ = srv
+
+	// Create a test client with switch info
+	mac := "00:22:33:44:55:66"
+	_ = db.CreateClient(&models.Client{
+		MACAddress:      mac,
+		Status:          models.ClientStatusActive,
+		UniFiSwitchName: "USW-48-G2",
+		UniFiSwitchPort: "18",
+	})
+
+	// 1. Build RADIUS packet with binary NAS-Port (18 as uint32) and NAS-Identifier
+	req := &Packet{
+		Code:       CodeAccessRequest,
+		Identifier: 12,
+	}
+	_, _ = rand.Read(req.Authenticator[:])
+	req.AddString(AttrUserName, mac)
+	req.AddString(AttrCallingStationID, mac)
+	req.AddString(AttrNASIdentifier, "USW-48-G2")
+
+	portBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(portBytes, 18)
+	req.AddAttribute(AttrNASPort, portBytes)
+
+	// Verify packet attributes
+	rawPort := req.GetAttribute(AttrNASPort)
+	if binaryToUint(rawPort) != 18 {
+		t.Errorf("Expected port 18, got %d", binaryToUint(rawPort))
+	}
+
+	// Verify format value
+	valStr := FormatValue(AttrNASPort, rawPort)
+	if valStr != "18" {
+		t.Errorf("Expected FormatValue to format port as '18', got %q", valStr)
+	}
+}
+
 

@@ -117,6 +117,7 @@ type AuthLog struct {
 	Username       string    `json:"username,omitempty"`
 	NASIP          string    `json:"nas_ip,omitempty"`
 	NASPort        string    `json:"nas_port,omitempty"`
+	NASName        string    `json:"nas_name,omitempty"`
 	AuthType       AuthType  `json:"auth_type"`
 	Status         string    `json:"status"` // 'ACCEPT', 'REJECT'
 	VLANID         *int      `json:"vlan_id,omitempty"`

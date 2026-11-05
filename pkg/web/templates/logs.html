@@ -337,7 +337,10 @@
               <div style="color: var(--text-dim); font-size: 11px;">UniFi: {{.EnrichedName}} {{if .EnrichedVendor}}({{.EnrichedVendor}}){{end}}</div>
             {{end}}
           </td>
-          <td style="color: var(--text-muted); font-size: 12px;">{{.NASIP}}:{{.NASPort}}</td>
+          <td style="color: var(--text-muted); font-size: 12px;">
+            <div><strong>{{if .NASName}}{{.NASName}}{{else}}{{.NASIP}}{{end}}</strong></div>
+            <div style="font-size: 11px; color: var(--text-dim);">{{if .NASPort}}Port {{.NASPort}}{{if and .NASName (ne .NASName .NASIP)}} • {{.NASIP}}{{end}}{{else}}{{.NASIP}}{{end}}</div>
+          </td>
           <td>
             <span class="latency-pill {{if lt .LatencyMS 15.0}}latency-fast{{else if lt .LatencyMS 50.0}}latency-normal{{else}}latency-slow{{end}}">
               {{printf "%.1f" .LatencyMS}} ms
@@ -634,7 +637,8 @@ function openRadiusDetailsModal(id) {
       title.innerHTML = `${statusBadge} Request #${log.id} - ${clientIdent}`;
       
       const d = new Date(log.timestamp);
-      subtitle.textContent = d.toLocaleString() + ' • NAS ' + log.nas_ip + ':' + log.nas_port + ' • Latenz ' + (log.latency_ms ? log.latency_ms.toFixed(1) : '0') + ' ms';
+      const nasLabel = (log.nas_name ? log.nas_name + ' (' + log.nas_ip + ')' : log.nas_ip) + (log.nas_port ? ' Port ' + log.nas_port : '');
+      subtitle.textContent = d.toLocaleString() + ' • NAS ' + nasLabel + ' • Latenz ' + (log.latency_ms ? log.latency_ms.toFixed(1) : '0') + ' ms';
       footerInfo.textContent = 'Auth-Typ: ' + (log.auth_type || 'MAB') + ' • ID: ' + log.id;
 
       // Render Overview Tab
@@ -666,7 +670,9 @@ function openRadiusDetailsModal(id) {
           </div>
           <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
             <div style="font-size: 11px; color: var(--text-dim); text-transform: uppercase;">NAS (Switch / AP)</div>
-            <div style="margin-top: 4px; font-size: 13px; font-family: var(--font-mono);">${log.nas_ip}:${log.nas_port}</div>
+            <div style="margin-top: 4px; font-size: 13px; font-family: var(--font-mono);">
+              ${log.nas_name ? '<strong>' + log.nas_name + '</strong><br>' : ''}${log.nas_ip}${log.nas_port ? ' (Port ' + log.nas_port + ')' : ''}
+            </div>
           </div>
         </div>
       `;

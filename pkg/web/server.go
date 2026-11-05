@@ -2273,6 +2273,19 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		)
 	}
 
+	nasDisplay := a.NASName
+	if nasDisplay == "" {
+		nasDisplay = a.NASIP
+	}
+	nasSub := a.NASIP
+	if a.NASPort != "" {
+		if a.NASName != "" && a.NASName != a.NASIP {
+			nasSub = fmt.Sprintf("Port %s • %s", a.NASPort, a.NASIP)
+		} else {
+			nasSub = fmt.Sprintf("Port %s", a.NASPort)
+		}
+	}
+
 	liveRow := fmt.Sprintf(`
 	<tr id="live-feed-rows" hx-swap-oob="afterbegin" data-status="%s" data-ident="%s" data-vlan="%s">
 		<td style="color: var(--text-dim); font-size: 12px;"><time class="local-time" datetime="%s" data-format="time">%s</time></td>
@@ -2284,8 +2297,8 @@ func formatAuthRowHTML(a models.AuthLog) string {
 			<div style="font-size: 11px; color: var(--text-dim);">%s</div>
 		</td>
 		<td>
-			<div>%s</div>
-			<div style="font-size: 11px; color: var(--text-dim);">Port %s</div>
+			<div><strong>%s</strong></div>
+			<div style="font-size: 11px; color: var(--text-dim);">%s</div>
 		</td>
 		<td style="font-size: 12px;"><span class="latency-pill %s">%.1f ms</span></td>
 	</tr>`,
@@ -2300,8 +2313,8 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		vlanBadge,
 		template.HTMLEscapeString(enrichedName),
 		template.HTMLEscapeString(a.EnrichedVendor),
-		template.HTMLEscapeString(a.NASIP),
-		template.HTMLEscapeString(a.NASPort),
+		template.HTMLEscapeString(nasDisplay),
+		template.HTMLEscapeString(nasSub),
 		template.HTMLEscapeString(latencyClass),
 		a.LatencyMS,
 	)
@@ -2316,7 +2329,10 @@ func formatAuthRowHTML(a models.AuthLog) string {
 			<div><strong>%s</strong></div>
 			%s
 		</td>
-		<td style="color: var(--text-muted); font-size: 12px;">%s:%s</td>
+		<td style="color: var(--text-muted); font-size: 12px;">
+			<div><strong>%s</strong></div>
+			<div style="font-size: 11px; color: var(--text-dim);">%s</div>
+		</td>
 		<td><span class="latency-pill %s">%.1f ms</span></td>
 		<td style="text-align: right;">
 			<button type="button" class="btn btn-secondary btn-sm" onclick="openRadiusDetailsModal(%d)" style="padding: 3px 8px; font-size: 11px;">
@@ -2335,8 +2351,8 @@ func formatAuthRowHTML(a models.AuthLog) string {
 		vlanBadge,
 		template.HTMLEscapeString(a.Reason),
 		enrichedInfo,
-		template.HTMLEscapeString(a.NASIP),
-		template.HTMLEscapeString(a.NASPort),
+		template.HTMLEscapeString(nasDisplay),
+		template.HTMLEscapeString(nasSub),
 		template.HTMLEscapeString(latencyClass),
 		a.LatencyMS,
 		a.ID,

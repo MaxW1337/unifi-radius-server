@@ -73,3 +73,49 @@ func TestTelegramHTMLEscapingAgainstInjection(t *testing.T) {
 	}
 }
 
+func TestTelegramSwitchAndPortFormatting(t *testing.T) {
+	// 1. Both Switch and Port
+	ev1 := NotificationEvent{
+		Type:       EventPendingDevice,
+		Title:      "Neues Gerät",
+		Message:    "Zugriff angefordert",
+		ClientMAC:  "00:11:22:33:44:55",
+		SwitchName: "USW-48-G2",
+		SwitchPort: "18",
+		Timestamp:  time.Now(),
+	}
+	out1 := formatTelegramEventHTML(ev1)
+	if !strings.Contains(out1, "• <b>Switch:</b> USW-48-G2 (Port 18)") {
+		t.Errorf("Expected Switch and Port line, got:\n%s", out1)
+	}
+
+	// 2. Switch only (e.g. Access Point)
+	ev2 := NotificationEvent{
+		Type:       EventPendingDevice,
+		Title:      "Neues Gerät",
+		Message:    "Zugriff angefordert",
+		ClientMAC:  "00:11:22:33:44:55",
+		SwitchName: "AP-EG",
+		Timestamp:  time.Now(),
+	}
+	out2 := formatTelegramEventHTML(ev2)
+	if !strings.Contains(out2, "• <b>Switch/AP:</b> AP-EG") {
+		t.Errorf("Expected Switch/AP line, got:\n%s", out2)
+	}
+
+	// 3. Port only
+	ev3 := NotificationEvent{
+		Type:       EventPendingDevice,
+		Title:      "Neues Gerät",
+		Message:    "Zugriff angefordert",
+		ClientMAC:  "00:11:22:33:44:55",
+		SwitchPort: "18",
+		Timestamp:  time.Now(),
+	}
+	out3 := formatTelegramEventHTML(ev3)
+	if !strings.Contains(out3, "• <b>Port:</b> 18") {
+		t.Errorf("Expected Port line, got:\n%s", out3)
+	}
+}
+
+

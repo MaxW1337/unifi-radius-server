@@ -130,8 +130,10 @@
             <div style="font-size: 11px; color: var(--text-dim);">{{.EnrichedVendor}}</div>
           </td>
           <td>
-            <div>{{.NASIP}}</div>
-            <div style="font-size: 11px; color: var(--text-dim);">Port {{.NASPort}}</div>
+            <div><strong>{{if .NASName}}{{.NASName}}{{else}}{{.NASIP}}{{end}}</strong></div>
+            <div style="font-size: 11px; color: var(--text-dim);">
+              {{if .NASPort}}Port {{.NASPort}}{{if and .NASName (ne .NASName .NASIP)}} • {{.NASIP}}{{end}}{{else}}{{.NASIP}}{{end}}
+            </div>
           </td>
           <td style="font-size: 12px;"><span class="latency-pill {{if lt .LatencyMS 15.0}}latency-fast{{else if lt .LatencyMS 50.0}}latency-normal{{else}}latency-slow{{end}}">{{printf "%.1f" .LatencyMS}} ms</span></td>
         </tr>
