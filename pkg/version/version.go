@@ -48,3 +48,4 @@ func Full() string {
 	return fmt.Sprintf("unifi-radius-server %s (commit: %s, built: %s, os/arch: %s/%s)",
 		Version, GitCommit, BuildDate, runtime.GOOS, runtime.GOARCH)
 }
+

@@ -2,6 +2,7 @@ package eventbus
 
 import (
 	"sync"
+	"time"
 
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
 )
@@ -18,10 +19,11 @@ const (
 
 // LogEvent represents an entry streamed to the live log console.
 type LogEvent struct {
-	Timestamp string   `json:"timestamp"`
-	Level     LogLevel `json:"level"`
-	Source    string   `json:"source"`
-	Message   string   `json:"message"`
+	Timestamp string    `json:"timestamp"`
+	Level     LogLevel  `json:"level"`
+	Source    string    `json:"source"`
+	Message   string    `json:"message"`
+	CreatedAt time.Time `json:"created_at,omitempty"`
 }
 
 // Bus provides publish-subscribe capabilities for real-time WebSocket clients.
@@ -104,6 +106,13 @@ func (b *Bus) PublishAuth(event models.AuthLog) {
 
 // PublishLog broadcasts a log line and keeps it in the ring buffer.
 func (b *Bus) PublishLog(event LogEvent) {
+	if event.CreatedAt.IsZero() {
+		event.CreatedAt = time.Now().UTC()
+	}
+	if event.Timestamp == "" {
+		event.Timestamp = event.CreatedAt.Format("15:04:05")
+	}
+
 	b.mu.Lock()
 	if len(b.recentLogs) >= b.maxLogBuffer {
 		b.recentLogs = b.recentLogs[1:]

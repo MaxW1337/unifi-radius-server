@@ -44,3 +44,4 @@ func TestVersionConsistencyWithRootFile(t *testing.T) {
 		t.Fatalf("Version mismatch: root VERSION file has %q, but pkg/version/version.go has %q. Please keep them synchronized!", fileVersion, codeVersion)
 	}
 }
+

@@ -268,6 +268,7 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 	mux.HandleFunc("/logs", s.requireAuth(s.handleLogs))
 	mux.HandleFunc("/api/radius/debug/toggle", s.requireAuth(s.handleToggleDebugMode))
 	mux.HandleFunc("/api/logs/export/csv", s.requireAuth(s.handleExportLogsCSV))
+	mux.HandleFunc("/api/logs/system/export/csv", s.requireAuth(s.handleExportSystemLogsCSV))
 	mux.HandleFunc("/api/logs/auth/details", s.requireAuth(s.handleAuthLogDetails))
 
 	mux.HandleFunc("/settings", s.requireAuth(s.handleSettings))
@@ -300,6 +301,8 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 	}
+
+	s.startSystemLogPersister()
 
 	return s, nil
 }
@@ -1147,6 +1150,7 @@ func (s *Server) handleDownloadMobileConfig(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
+	// 1. Auth Log Query Filters
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
 		q = strings.TrimSpace(r.URL.Query().Get("mac"))
@@ -1165,20 +1169,208 @@ func (s *Server) handleLogs(w http.ResponseWriter, r *http.Request) {
 
 	initialLogs := s.bus.GetRecentLogs()
 
+	// 2. System Log Query Filters (Historical Gesamtlog)
+	sysRange := strings.TrimSpace(r.URL.Query().Get("sys_range"))
+	if sysRange == "" {
+		sysRange = "all"
+	}
+	sysFrom := strings.TrimSpace(r.URL.Query().Get("sys_from"))
+	sysTo := strings.TrimSpace(r.URL.Query().Get("sys_to"))
+	sysLevel := strings.TrimSpace(r.URL.Query().Get("sys_level"))
+	sysSource := strings.TrimSpace(r.URL.Query().Get("sys_source"))
+	sysQ := strings.TrimSpace(r.URL.Query().Get("sys_q"))
+
+	fromTime, toTime := parseSystemLogTimeRange(sysRange, sysFrom, sysTo)
+	sysLogs, totalSysLogs, _ := s.db.ListSystemLogs(100, 0, sysLevel, sysSource, sysQ, fromTime, toTime)
+	sysSources, _ := s.db.GetDistinctSystemLogSources()
+
 	data := map[string]interface{}{
-		"Title":         "RADIUS Historie & Live Logs",
-		"PageTitle":     "RADIUS Request Historie & Live Logs",
-		"ActiveNav":     "logs",
-		"Logs":          logs,
-		"TotalLogs":     total,
-		"RetentionDays": settings.LogRetentionDays,
-		"QueryFilter":   q,
-		"MACFilter":     q,
-		"StatusFilter":  statusFilter,
-		"DebugMode":     debugMode,
-		"InitialLogs":   initialLogs,
+		"Title":           "System- & Live-Logs",
+		"PageTitle":       "System- & Live-Logs",
+		"ActiveNav":       "logs",
+		"Logs":            logs,
+		"TotalLogs":       total,
+		"RetentionDays":   settings.LogRetentionDays,
+		"QueryFilter":     q,
+		"MACFilter":       q,
+		"StatusFilter":    statusFilter,
+		"DebugMode":       debugMode,
+		"InitialLogs":     initialLogs,
+		// Historical System Log Data
+		"SystemLogs":      sysLogs,
+		"TotalSystemLogs": totalSysLogs,
+		"SystemSources":   sysSources,
+		"SysRange":        sysRange,
+		"SysFrom":         sysFrom,
+		"SysTo":           sysTo,
+		"SysLevel":        sysLevel,
+		"SysSource":       sysSource,
+		"SysQ":            sysQ,
 	}
 	s.renderPage(w, r, "logs.html", data)
+}
+
+func (s *Server) startSystemLogPersister() {
+	if s.bus == nil || s.db == nil {
+		return
+	}
+	logSub, _, _ := s.bus.SubscribeLogs()
+	go func() {
+		batch := make([]models.SystemLog, 0, 50)
+		ticker := time.NewTicker(250 * time.Millisecond)
+		defer ticker.Stop()
+
+		flush := func() {
+			if len(batch) == 0 {
+				return
+			}
+			_ = s.db.InsertSystemLogsBatch(batch)
+			batch = batch[:0]
+		}
+
+		for {
+			select {
+			case event, ok := <-logSub:
+				if !ok {
+					flush()
+					return
+				}
+				ts := time.Now().UTC()
+				if !event.CreatedAt.IsZero() {
+					ts = event.CreatedAt.UTC()
+				}
+				batch = append(batch, models.SystemLog{
+					Timestamp: ts,
+					Level:     string(event.Level),
+					Source:    event.Source,
+					Message:   event.Message,
+				})
+				if len(batch) >= 50 {
+					flush()
+				}
+			case <-ticker.C:
+				flush()
+			}
+		}
+	}()
+}
+
+func parseSystemLogTimeRange(preset, fromStr, toStr string) (*time.Time, *time.Time) {
+	now := time.Now().UTC()
+	switch preset {
+	case "15m":
+		t := now.Add(-15 * time.Minute)
+		return &t, &now
+	case "1h":
+		t := now.Add(-1 * time.Hour)
+		return &t, &now
+	case "6h":
+		t := now.Add(-6 * time.Hour)
+		return &t, &now
+	case "24h":
+		t := now.Add(-24 * time.Hour)
+		return &t, &now
+	case "today":
+		localNow := time.Now()
+		startOfDayLocal := time.Date(localNow.Year(), localNow.Month(), localNow.Day(), 0, 0, 0, 0, localNow.Location())
+		utcStart := startOfDayLocal.UTC()
+		return &utcStart, &now
+	case "7d":
+		t := now.AddDate(0, 0, -7)
+		return &t, &now
+	case "30d":
+		t := now.AddDate(0, 0, -30)
+		return &t, &now
+	case "custom":
+		// handled below
+	}
+
+	var fromTime, toTime *time.Time
+	if fromStr != "" {
+		if t, err := parseDateTimeFlexible(fromStr); err == nil {
+			fromTime = &t
+		}
+	}
+	if toStr != "" {
+		if t, err := parseDateTimeFlexible(toStr); err == nil {
+			toTime = &t
+		}
+	}
+	return fromTime, toTime
+}
+
+func parseDateTimeFlexible(s string) (time.Time, error) {
+	s = strings.TrimSpace(s)
+	formats := []string{
+		"2006-01-02T15:04:05",
+		"2006-01-02T15:04",
+		"2006-01-02 15:04:05",
+		"2006-01-02 15:04",
+		"2006-01-02",
+		time.RFC3339,
+	}
+	for _, f := range formats {
+		if t, err := time.ParseInLocation(f, s, time.Local); err == nil {
+			return t.UTC(), nil
+		}
+	}
+	return time.Parse(time.RFC3339, s)
+}
+
+func (s *Server) handleExportSystemLogsCSV(w http.ResponseWriter, r *http.Request) {
+	sysRange := strings.TrimSpace(r.URL.Query().Get("range"))
+	if sysRange == "" {
+		sysRange = strings.TrimSpace(r.URL.Query().Get("sys_range"))
+	}
+	if sysRange == "" {
+		sysRange = "all"
+	}
+	sysFrom := strings.TrimSpace(r.URL.Query().Get("from"))
+	if sysFrom == "" {
+		sysFrom = strings.TrimSpace(r.URL.Query().Get("sys_from"))
+	}
+	sysTo := strings.TrimSpace(r.URL.Query().Get("to"))
+	if sysTo == "" {
+		sysTo = strings.TrimSpace(r.URL.Query().Get("sys_to"))
+	}
+	sysLevel := strings.TrimSpace(r.URL.Query().Get("level"))
+	if sysLevel == "" {
+		sysLevel = strings.TrimSpace(r.URL.Query().Get("sys_level"))
+	}
+	sysSource := strings.TrimSpace(r.URL.Query().Get("source"))
+	if sysSource == "" {
+		sysSource = strings.TrimSpace(r.URL.Query().Get("sys_source"))
+	}
+	sysQ := strings.TrimSpace(r.URL.Query().Get("q"))
+	if sysQ == "" {
+		sysQ = strings.TrimSpace(r.URL.Query().Get("sys_q"))
+	}
+
+	fromTime, toTime := parseSystemLogTimeRange(sysRange, sysFrom, sysTo)
+
+	logs, _, err := s.db.ListSystemLogs(5000, 0, sysLevel, sysSource, sysQ, fromTime, toTime)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"system-logs-%s.csv\"", time.Now().Format("2006-01-02-150405")))
+
+	writer := csv.NewWriter(w)
+	defer writer.Flush()
+
+	_ = writer.Write([]string{"ID", "Timestamp", "Level", "Source", "Message"})
+
+	for _, l := range logs {
+		_ = writer.Write([]string{
+			strconv.FormatInt(l.ID, 10),
+			l.Timestamp.Format(time.RFC3339),
+			l.Level,
+			l.Source,
+			l.Message,
+		})
+	}
 }
 
 func (s *Server) handleToggleDebugMode(w http.ResponseWriter, r *http.Request) {

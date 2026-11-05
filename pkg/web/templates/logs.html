@@ -1,6 +1,13 @@
 {{define "content"}}
-<!-- Live Log Stream Console -->
-<div class="panel">
+<!-- Top Section Quick Navigation -->
+<div class="settings-nav-tabs" style="margin-bottom: 20px;">
+  <a href="#sec-live-stream" class="settings-nav-pill active" onclick="switchNavTab(this)">{{tr .Lang "logs.nav_live"}}</a>
+  <a href="#sec-system-logs" class="settings-nav-pill" onclick="switchNavTab(this)">{{tr .Lang "logs.nav_system"}} ({{.TotalSystemLogs}})</a>
+  <a href="#sec-auth-logs" class="settings-nav-pill" onclick="switchNavTab(this)">{{tr .Lang "logs.nav_auth"}} ({{.TotalLogs}})</a>
+</div>
+
+<!-- 1. Live Log Stream Console -->
+<div class="panel" id="sec-live-stream" style="margin-bottom: 24px;">
   <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
     <div>
       <h3 class="panel-title">{{tr .Lang "logs.rt_title"}}</h3>
@@ -66,16 +73,17 @@
       <!-- Source Filter Select -->
       <div style="display: flex; align-items: center; gap: 6px;">
         <span style="font-size: 11px; color: var(--text-dim); font-weight: 500;">{{tr .Lang "logs.filter_source"}}</span>
-        <select id="logSourceSelect" class="form-control" style="width: 140px; padding: 4px 8px; font-size: 12px;" onchange="applyLogFilters()">
+        <select id="logSourceSelect" class="form-control" style="width: 175px; padding: 4px 8px; font-size: 12px;" onchange="applyLogFilters()">
           <option value="">{{tr .Lang "logs.filter_all_sources"}}</option>
-          <option value="RADIUS">RADIUS</option>
+          <option value="RADIUS">RADIUS (Auth)</option>
           <option value="RADIUS-RAW">RADIUS-RAW (Pakete)</option>
-          <option value="UniFi Sync">UniFi Sync</option>
-          <option value="CLIENT-ACTION">Client Action</option>
-          <option value="UPDATE">Update</option>
-          <option value="DB">Datenbank / DB</option>
-          <option value="BACKUP">Backup</option>
-          <option value="Web">Web UI</option>
+          <option value="UNIFI-SYNC">UNIFI-SYNC (UniFi)</option>
+          <option value="CLIENT-ACTION">CLIENT-ACTION (Port)</option>
+          <option value="BACKUP">BACKUP (Lokal/Remote)</option>
+          <option value="UPDATE">UPDATE (Software)</option>
+          <option value="WEB">WEB UI (Admin)</option>
+          <option value="MIGRATION">MIGRATION (UniFi)</option>
+          <option value="UNIFI-RADIUS">UNIFI-RADIUS (Dienst)</option>
         </select>
       </div>
     </div>
@@ -87,7 +95,11 @@
     </div>
   </div>
 
-  <div style="padding: 16px;">
+  <div style="padding: 16px; position: relative;">
+    <div id="terminal-no-matches" style="display: none; padding: 24px 16px; text-align: center; color: var(--text-dim); font-size: 13px; background: rgba(15, 23, 42, 0.6); border: 1px dashed var(--border-color); border-radius: 8px; margin-bottom: 12px;">
+      Keine Live-Log Einträge entsprechen den ausgewählten Filtern (Level / Quelle / Suchbegriff).
+    </div>
+
     <div id="terminalConsole" class="terminal-window">
       {{range .InitialLogs}}
       <div class="terminal-line" data-level="{{.Level}}" data-source="{{.Source}}">
@@ -101,15 +113,155 @@
         {{end}}
       </div>
       {{end}}
-      <div id="terminal-no-matches" style="display: none; padding: 32px 16px; text-align: center; color: var(--text-dim); font-size: 13px;">
-        Keine Log-Einträge entsprechen dem aktuellen Filter.
-      </div>
     </div>
   </div>
 </div>
 
-<!-- Dedicated RADIUS Request Historie -->
-<div class="panel">
+<!-- 2. Historisches Gesamtlog (System & Ereignisse) -->
+<div class="panel" id="sec-system-logs" style="margin-bottom: 24px;">
+  <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
+    <div>
+      <h3 class="panel-title" style="display: flex; align-items: center; gap: 8px;">
+        <span>{{tr .Lang "logs.sys_title"}}</span>
+        <span class="badge dim" style="font-size: 11px;">{{.TotalSystemLogs}} Einträge</span>
+      </h3>
+      <p class="panel-subtitle">{{tr .Lang "logs.sys_subtitle"}}</p>
+    </div>
+    
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <!-- Export System Logs CSV -->
+      <a href="/api/logs/system/export/csv?sys_range={{.SysRange}}&sys_from={{.SysFrom}}&sys_to={{.SysTo}}&sys_level={{.SysLevel}}&sys_source={{.SysSource}}&sys_q={{.SysQ}}" class="btn btn-secondary btn-sm" download title="Gesamtlog als CSV exportieren">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right: 4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        {{tr .Lang "logs.btn_export_csv"}}
+      </a>
+    </div>
+  </div>
+
+  <!-- System Log Filter Bar -->
+  <form method="GET" action="/logs#sec-system-logs" id="sysLogFilterForm" style="padding: 12px 16px; background: rgba(15, 23, 42, 0.4); border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 12px;">
+    <!-- Relative Time Presets Bar -->
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;">
+      <span style="font-size: 11px; color: var(--text-dim); font-weight: 600;">{{tr .Lang "logs.time_filter"}}</span>
+      <input type="hidden" name="sys_range" id="sysRangeInput" value="{{.SysRange}}">
+      
+      <div class="filter-pill-group">
+        <button type="button" class="filter-pill {{if or (eq .SysRange "all") (eq .SysRange "")}}active{{end}}" onclick="setSysTimeRange('all')">{{tr .Lang "logs.time_range_all"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "15m"}}active{{end}}" onclick="setSysTimeRange('15m')">{{tr .Lang "logs.time_range_15m"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "1h"}}active{{end}}" onclick="setSysTimeRange('1h')">{{tr .Lang "logs.time_range_1h"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "6h"}}active{{end}}" onclick="setSysTimeRange('6h')">{{tr .Lang "logs.time_range_6h"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "24h"}}active{{end}}" onclick="setSysTimeRange('24h')">{{tr .Lang "logs.time_range_24h"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "today"}}active{{end}}" onclick="setSysTimeRange('today')">{{tr .Lang "logs.time_range_today"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "7d"}}active{{end}}" onclick="setSysTimeRange('7d')">{{tr .Lang "logs.time_range_7d"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "30d"}}active{{end}}" onclick="setSysTimeRange('30d')">{{tr .Lang "logs.time_range_30d"}}</button>
+        <button type="button" class="filter-pill {{if eq .SysRange "custom"}}active{{end}}" onclick="setSysTimeRange('custom')">{{tr .Lang "logs.time_range_custom"}}</button>
+      </div>
+    </div>
+
+    <!-- Absolute Time Picker (Custom Range) -->
+    <div id="sysCustomTimeBox" style="display: {{if eq .SysRange "custom"}}flex{{else}}none{{end}}; flex-wrap: wrap; gap: 12px; align-items: center; padding: 8px 12px; background: rgba(0,0,0,0.25); border-radius: 6px; border: 1px solid var(--border-color);">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; color: var(--text-dim);">{{tr .Lang "logs.time_from"}}</span>
+        <input type="datetime-local" name="sys_from" value="{{.SysFrom}}" class="form-control" style="font-size: 12px; padding: 4px 8px; width: 190px;">
+      </div>
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: 11px; color: var(--text-dim);">{{tr .Lang "logs.time_to"}}</span>
+        <input type="datetime-local" name="sys_to" value="{{.SysTo}}" class="form-control" style="font-size: 12px; padding: 4px 8px; width: 190px;">
+      </div>
+    </div>
+
+    <!-- Second Row: Level, Source, Search & Submit -->
+    <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+      <!-- Search Input -->
+      <div style="position: relative; min-width: 220px; flex: 1; max-width: 320px;">
+        <input type="text" name="sys_q" value="{{.SysQ}}" placeholder="{{tr .Lang "logs.sys_search_ph"}}" class="form-control" style="font-size: 12px; padding: 6px 12px 6px 28px;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position: absolute; left: 9px; top: 9px; color: var(--text-dim);"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+      </div>
+
+      <!-- Level Filter -->
+      <select name="sys_level" class="form-control" style="width: 120px; padding: 6px 8px; font-size: 12px;">
+        <option value="" {{if eq .SysLevel ""}}selected{{end}}>Alle Level</option>
+        <option value="DEBUG" {{if eq .SysLevel "DEBUG"}}selected{{end}}>DEBUG</option>
+        <option value="INFO" {{if eq .SysLevel "INFO"}}selected{{end}}>INFO</option>
+        <option value="WARN" {{if eq .SysLevel "WARN"}}selected{{end}}>WARN</option>
+        <option value="ERROR" {{if eq .SysLevel "ERROR"}}selected{{end}}>ERROR</option>
+      </select>
+
+      <!-- Source Filter -->
+      <select name="sys_source" class="form-control" style="width: 160px; padding: 6px 8px; font-size: 12px;">
+        <option value="" {{if eq .SysSource ""}}selected{{end}}>Alle Quellen</option>
+        {{range .SystemSources}}
+          <option value="{{.}}" {{if eq $.SysSource .}}selected{{end}}>{{.}}</option>
+        {{else}}
+          <option value="RADIUS" {{if eq .SysSource "RADIUS"}}selected{{end}}>RADIUS</option>
+          <option value="RADIUS-RAW" {{if eq .SysSource "RADIUS-RAW"}}selected{{end}}>RADIUS-RAW</option>
+          <option value="UNIFI-SYNC" {{if eq .SysSource "UNIFI-SYNC"}}selected{{end}}>UNIFI-SYNC</option>
+          <option value="CLIENT-ACTION" {{if eq .SysSource "CLIENT-ACTION"}}selected{{end}}>CLIENT-ACTION</option>
+          <option value="BACKUP" {{if eq .SysSource "BACKUP"}}selected{{end}}>BACKUP</option>
+          <option value="UPDATE" {{if eq .SysSource "UPDATE"}}selected{{end}}>UPDATE</option>
+          <option value="WEB" {{if eq .SysSource "WEB"}}selected{{end}}>WEB</option>
+        {{end}}
+      </select>
+
+      <button type="submit" class="btn btn-secondary btn-sm">{{tr .Lang "common.filter"}}</button>
+      
+      {{if or (ne .SysRange "all") .SysLevel .SysSource .SysQ .SysFrom .SysTo}}
+        <a href="/logs#sec-system-logs" class="btn btn-secondary btn-sm" style="color: var(--text-dim);" title="Filter zurücksetzen">Zurücksetzen</a>
+      {{end}}
+    </div>
+  </form>
+
+  <div class="table-wrapper">
+    <table id="system-logs-table">
+      <thead>
+        <tr>
+          <th style="width: 170px;">{{tr .Lang "logs.th_time"}}</th>
+          <th style="width: 90px;">{{tr .Lang "logs.th_level"}}</th>
+          <th style="width: 140px;">{{tr .Lang "logs.th_source"}}</th>
+          <th>{{tr .Lang "logs.th_message"}}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{range .SystemLogs}}
+        <tr>
+          <td style="color: var(--text-dim); font-size: 12px; white-space: nowrap;">
+            <time class="local-time" datetime="{{.Timestamp.Format "2006-01-02T15:04:05Z07:00"}}" data-format="datetime">{{.Timestamp.Format "02.01. 15:04:05"}}</time>
+          </td>
+          <td>
+            {{if eq .Level "ERROR"}}
+              <span class="badge reject">ERROR</span>
+            {{else if eq .Level "WARN"}}
+              <span class="badge warning" style="background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3);">WARN</span>
+            {{else if eq .Level "DEBUG"}}
+              <span class="badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.3);">DEBUG</span>
+            {{else}}
+              <span class="badge accept" style="background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);">INFO</span>
+            {{end}}
+          </td>
+          <td>
+            <span class="code-pill" style="font-size: 11px; font-weight: 600;">{{.Source}}</span>
+          </td>
+          <td style="font-size: 12px; word-break: break-word;">
+            {{if containsNewline .Message}}
+              <pre class="terminal-pre" style="margin: 0; max-height: 180px;">{{.Message}}</pre>
+            {{else}}
+              <span>{{.Message}}</span>
+            {{end}}
+          </td>
+        </tr>
+        {{else}}
+        <tr>
+          <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 40px;">
+            {{tr .Lang "logs.empty_sys_logs"}}
+          </td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 3. Dedicated RADIUS Request Historie -->
+<div class="panel" id="sec-auth-logs">
   <div class="panel-header" style="flex-wrap: wrap; gap: 12px;">
     <div>
       <h3 class="panel-title" style="display: flex; align-items: center; gap: 8px;">
@@ -127,7 +279,7 @@
       </a>
 
       <!-- Server Search & Filter Form -->
-      <form method="GET" action="/logs" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <form method="GET" action="/logs#sec-auth-logs" style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
         <input type="text" id="histLogSearchInput" name="q" value="{{.QueryFilter}}" placeholder="{{tr .Lang "logs.search_ph"}}" class="form-control" style="width: 240px; padding: 6px 12px; font-size: 12px;" oninput="filterHistTable()">
         <select id="histLogStatusSelect" name="status" class="form-control" style="width: 130px; padding: 6px 10px; font-size: 12px;" onchange="this.form.submit()">
           <option value="" {{if eq .StatusFilter ""}}selected{{end}}>{{tr .Lang "logs.filter_all"}}</option>
@@ -136,7 +288,7 @@
         </select>
         <button type="submit" class="btn btn-secondary btn-sm">{{tr .Lang "common.filter"}}</button>
         {{if or .QueryFilter .StatusFilter}}
-          <a href="/logs" class="btn btn-secondary btn-sm" style="color: var(--text-dim);" title="Filter zurücksetzen">&times;</a>
+          <a href="/logs#sec-auth-logs" class="btn btn-secondary btn-sm" style="color: var(--text-dim);" title="Filter zurücksetzen">&times;</a>
         {{end}}
       </form>
     </div>
@@ -256,6 +408,11 @@ let activeSource = '';
 let pausedLinesCount = 0;
 let currentModalLog = null;
 
+function switchNavTab(el) {
+  document.querySelectorAll('.settings-nav-tabs .settings-nav-pill').forEach(p => p.classList.remove('active'));
+  if (el) el.classList.add('active');
+}
+
 function clearTerminal() {
   const term = document.getElementById('terminalConsole');
   if (term) term.innerHTML = '';
@@ -316,12 +473,13 @@ function resetLogFilters() {
   applyLogFilters();
 }
 
+// Live Terminal Filter Function
 function applyLogFilters() {
   const searchVal = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
   const clearBtn = document.getElementById('clearLogSearchBtn');
   if (clearBtn) clearBtn.style.display = searchVal ? 'block' : 'none';
 
-  const srcVal = (document.getElementById('logSourceSelect')?.value || '').toLowerCase();
+  const srcVal = (document.getElementById('logSourceSelect')?.value || '').trim().toUpperCase();
   activeSource = srcVal;
 
   const isFilterActive = !!(searchVal || activeLevel || activeSource);
@@ -337,12 +495,23 @@ function applyLogFilters() {
     }
 
     const lvl = (line.getAttribute('data-level') || '').toUpperCase();
-    const src = (line.getAttribute('data-source') || '').toLowerCase();
+    const src = (line.getAttribute('data-source') || '').toUpperCase();
     const text = (line.textContent || '').toLowerCase();
 
     let match = true;
     if (activeLevel && lvl !== activeLevel) match = false;
-    if (activeSource && !src.includes(activeSource)) match = false;
+    
+    // Accurate source matching
+    if (activeSource) {
+      if (activeSource === 'UPDATE') {
+        if (src !== 'UPDATE' && src !== 'AUTO-UPDATE') match = false;
+      } else if (activeSource === 'WEB') {
+        if (src !== 'WEB' && src !== 'MIGRATION' && src !== 'UNIFI-RADIUS') match = false;
+      } else {
+        if (src !== activeSource) match = false;
+      }
+    }
+
     if (searchVal && !text.includes(searchVal)) match = false;
 
     if (match) {
@@ -402,6 +571,20 @@ function exportTerminalLogs() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// System Log Time Preset Handler
+function setSysTimeRange(range) {
+  const inp = document.getElementById('sysRangeInput');
+  const customBox = document.getElementById('sysCustomTimeBox');
+  if (inp) inp.value = range;
+
+  if (range === 'custom') {
+    if (customBox) customBox.style.display = 'flex';
+  } else {
+    if (customBox) customBox.style.display = 'none';
+    document.getElementById('sysLogFilterForm')?.submit();
+  }
 }
 
 // Client-side quick filter for historical audit table
@@ -580,8 +763,9 @@ document.getElementById('radiusDetailsModal')?.addEventListener('click', functio
 document.body.addEventListener('htmx:wsAfterMessage', function(e) {
   const term = document.getElementById('terminalConsole');
   if (term) {
-    const lastLine = term.lastElementChild;
-    if (lastLine && lastLine.classList.contains('terminal-line')) {
+    const lines = term.querySelectorAll('.terminal-line');
+    const lastLine = lines.length > 0 ? lines[lines.length - 1] : null;
+    if (lastLine) {
       if (isPaused) {
         lastLine.classList.add('log-hidden', 'log-paused-buffered');
         pausedLinesCount++;
@@ -592,12 +776,22 @@ document.body.addEventListener('htmx:wsAfterMessage', function(e) {
       } else {
         const searchVal = (document.getElementById('logSearchInput')?.value || '').trim().toLowerCase();
         const lvl = (lastLine.getAttribute('data-level') || '').toUpperCase();
-        const src = (lastLine.getAttribute('data-source') || '').toLowerCase();
+        const src = (lastLine.getAttribute('data-source') || '').toUpperCase();
         const text = (lastLine.textContent || '').toLowerCase();
 
         let match = true;
         if (activeLevel && lvl !== activeLevel) match = false;
-        if (activeSource && !src.includes(activeSource)) match = false;
+        
+        if (activeSource) {
+          if (activeSource === 'UPDATE') {
+            if (src !== 'UPDATE' && src !== 'AUTO-UPDATE') match = false;
+          } else if (activeSource === 'WEB') {
+            if (src !== 'WEB' && src !== 'MIGRATION' && src !== 'UNIFI-RADIUS') match = false;
+          } else {
+            if (src !== activeSource) match = false;
+          }
+        }
+
         if (searchVal && !text.includes(searchVal)) match = false;
 
         if (match) {

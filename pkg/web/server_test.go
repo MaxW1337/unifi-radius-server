@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mwittenburg/unifi-radius-server/pkg/database"
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
@@ -772,6 +773,105 @@ func TestLogsPageAndEndpoints(t *testing.T) {
 	}
 	if detailLog.RawRequest != "RAW-ACCESS-REQUEST-DUMP" || detailLog.RawResponse != "RAW-ACCESS-ACCEPT-DUMP" {
 		t.Errorf("Details endpoint raw packet mismatch: %+v", detailLog)
+	}
+}
+
+func TestHistoricalSystemLogsAndExport(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	now := time.Now().UTC()
+
+	// Seed system logs in SQLite
+	_ = db.InsertSystemLog(&models.SystemLog{
+		Timestamp: now.Add(-30 * time.Minute),
+		Level:     "INFO",
+		Source:    "RADIUS",
+		Message:   "RADIUS worker listening on port 1812",
+	})
+	_ = db.InsertSystemLog(&models.SystemLog{
+		Timestamp: now.Add(-10 * time.Minute),
+		Level:     "WARN",
+		Source:    "UNIFI-SYNC",
+		Message:   "Sync connection timed out on 192.168.1.1",
+	})
+	_ = db.InsertSystemLog(&models.SystemLog{
+		Timestamp: now.Add(-2 * time.Minute),
+		Level:     "ERROR",
+		Source:    "BACKUP",
+		Message:   "WebDAV backup failed: disk full",
+	})
+
+	// 1. GET /logs with relative time filter (15m)
+	req15m := httptest.NewRequest(http.MethodGet, "/logs?sys_range=15m", nil)
+	rr15m := httptest.NewRecorder()
+	srv.handleLogs(rr15m, req15m)
+
+	if rr15m.Code != http.StatusOK {
+		t.Fatalf("GET /logs?sys_range=15m expected 200, got %d", rr15m.Code)
+	}
+	body15m := rr15m.Body.String()
+	if !strings.Contains(body15m, "Sync connection timed out") || !strings.Contains(body15m, "WebDAV backup failed") {
+		t.Errorf("Expected 15m logs in HTML body, got: %s", body15m)
+	}
+	if strings.Contains(body15m, "RADIUS worker listening") {
+		t.Errorf("Did not expect 30m old log in 15m filter, got: %s", body15m)
+	}
+
+	// 2. GET /logs with Level filter (ERROR)
+	reqErr := httptest.NewRequest(http.MethodGet, "/logs?sys_level=ERROR", nil)
+	rrErr := httptest.NewRecorder()
+	srv.handleLogs(rrErr, reqErr)
+
+	bodyErr := rrErr.Body.String()
+	if !strings.Contains(bodyErr, "WebDAV backup failed") {
+		t.Errorf("Expected ERROR log in body, got: %s", bodyErr)
+	}
+	if strings.Contains(bodyErr, "Sync connection timed out") {
+		t.Errorf("Did not expect WARN log in ERROR filter, got: %s", bodyErr)
+	}
+
+	// 3. GET /logs with Source filter (UNIFI-SYNC)
+	reqSync := httptest.NewRequest(http.MethodGet, "/logs?sys_source=UNIFI-SYNC", nil)
+	rrSync := httptest.NewRecorder()
+	srv.handleLogs(rrSync, reqSync)
+
+	bodySync := rrSync.Body.String()
+	if !strings.Contains(bodySync, "Sync connection timed out") {
+		t.Errorf("Expected UNIFI-SYNC log in body, got: %s", bodySync)
+	}
+	if strings.Contains(bodySync, "WebDAV backup failed") {
+		t.Errorf("Did not expect BACKUP log in UNIFI-SYNC filter, got: %s", bodySync)
+	}
+
+	// 4. GET /api/logs/system/export/csv
+	reqCSV := httptest.NewRequest(http.MethodGet, "/api/logs/system/export/csv?range=1h", nil)
+	rrCSV := httptest.NewRecorder()
+	srv.handleExportSystemLogsCSV(rrCSV, reqCSV)
+
+	if rrCSV.Code != http.StatusOK {
+		t.Fatalf("Export system logs CSV expected 200, got %d", rrCSV.Code)
+	}
+	csvContent := rrCSV.Body.String()
+	if !strings.Contains(csvContent, "ID,Timestamp,Level,Source,Message") {
+		t.Errorf("CSV header mismatch, got: %s", csvContent)
+	}
+	if !strings.Contains(csvContent, "UNIFI-SYNC") || !strings.Contains(csvContent, "BACKUP") {
+		t.Errorf("CSV content missing expected records, got: %s", csvContent)
+	}
+
+	// 5. Unit test parseSystemLogTimeRange
+	f1, t1 := parseSystemLogTimeRange("1h", "", "")
+	if f1 == nil || t1 == nil || !t1.After(*f1) {
+		t.Errorf("parseSystemLogTimeRange(1h) failed: f=%v, t=%v", f1, t1)
+	}
+
+	fCustom, tCustom := parseSystemLogTimeRange("custom", "2026-11-05T08:00", "2026-11-05T12:00")
+	if fCustom == nil || tCustom == nil {
+		t.Fatalf("parseSystemLogTimeRange(custom) returned nil: f=%v, t=%v", fCustom, tCustom)
+	}
+	if fCustom.Local().Hour() != 8 || tCustom.Local().Hour() != 12 {
+		t.Errorf("Custom range hours mismatch: f=%v (local: %v), t=%v (local: %v)", fCustom, fCustom.Local(), tCustom, tCustom.Local())
 	}
 }
 

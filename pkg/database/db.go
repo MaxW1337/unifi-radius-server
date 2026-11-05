@@ -139,10 +139,21 @@ func (db *DB) migrate() error {
 		raw_response TEXT DEFAULT ''
 	);
 
+	CREATE TABLE IF NOT EXISTS system_logs (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		timestamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+		level TEXT NOT NULL,
+		source TEXT NOT NULL,
+		message TEXT NOT NULL
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_auth_logs_timestamp ON auth_logs(timestamp);
 	CREATE INDEX IF NOT EXISTS idx_auth_logs_mac ON auth_logs(client_mac);
 	CREATE INDEX IF NOT EXISTS idx_clients_mac ON clients(mac_address);
 	CREATE INDEX IF NOT EXISTS idx_clients_status ON clients(status);
+	CREATE INDEX IF NOT EXISTS idx_system_logs_timestamp ON system_logs(timestamp);
+	CREATE INDEX IF NOT EXISTS idx_system_logs_level ON system_logs(level);
+	CREATE INDEX IF NOT EXISTS idx_system_logs_source ON system_logs(source);
 	`
 
 	_, err := db.Exec(schema)

@@ -116,6 +116,15 @@ type AuthLog struct {
 	RawResponse    string    `json:"raw_response,omitempty"`
 }
 
+// SystemLog represents a general system/service event persisted for auditing.
+type SystemLog struct {
+	ID        int64     `json:"id"`
+	Timestamp time.Time `json:"timestamp"`
+	Level     string    `json:"level"`
+	Source    string    `json:"source"`
+	Message   string    `json:"message"`
+}
+
 // Settings represents global system configuration.
 type Settings struct {
 	DefaultAllowVLAN   int              `json:"default_allow_vlan"`

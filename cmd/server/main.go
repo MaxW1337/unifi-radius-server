@@ -195,9 +195,10 @@ func main() {
 				return
 			case <-ticker.C:
 				if s, err := db.GetSettings(); err == nil {
-					pruned, _ := db.PruneAuthLogs(s.LogRetentionDays, s.MaxLogEntries)
-					if pruned > 0 {
-						log.Printf("[Retention] Cleaned up %d expired log entries.", pruned)
+					prunedAuth, _ := db.PruneAuthLogs(s.LogRetentionDays, s.MaxLogEntries)
+					prunedSys, _ := db.PruneSystemLogs(s.LogRetentionDays, 50000)
+					if prunedAuth > 0 || prunedSys > 0 {
+						log.Printf("[Retention] Cleaned up %d expired auth logs and %d system logs.", prunedAuth, prunedSys)
 					}
 				}
 			}
