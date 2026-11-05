@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/mwittenburg/unifi-radius-server/pkg/database"
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
@@ -312,3 +313,178 @@ func TestReconnectAndPowerCycle(t *testing.T) {
 		t.Errorf("Expected PowerCyclePort to hit devmgr endpoint")
 	}
 }
+
+func TestRestartPortNonPoE(t *testing.T) {
+	origPause := PortBouncePause
+	PortBouncePause = 10 * time.Millisecond
+	defer func() { PortBouncePause = origPause }()
+
+	putStep := 0
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/proxy/network/api/s/default/stat/device" {
+			resp := map[string]interface{}{
+				"meta": map[string]string{"rc": "ok"},
+				"data": []map[string]interface{}{
+					{
+						"_id":   "sw-test-123",
+						"name":  "USW-48-G2",
+						"mac":   "6c:63:f8:3f:08:fb",
+						"model": "USL48B",
+						"type":  "usw",
+						"port_overrides": []map[string]interface{}{
+							{
+								"name":        "Port 18",
+								"port_idx":    18,
+								"portconf_id": "profile-radius-mab",
+							},
+						},
+						"port_table": []map[string]interface{}{
+							{
+								"name":        "Port 18",
+								"port_idx":    18,
+								"port_poe":    false,
+								"poe_caps":    0,
+								"portconf_id": "profile-radius-mab",
+							},
+						},
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		if r.Method == http.MethodPut && r.URL.Path == "/proxy/network/api/s/default/rest/device/sw-test-123" {
+			var body map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			overrides, _ := body["port_overrides"].([]interface{})
+			if len(overrides) == 0 {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			om, _ := overrides[0].(map[string]interface{})
+			putStep++
+
+			if putStep == 1 {
+				// Step 1: disabled=true, portconf_id must be removed
+				if om["disabled"] != true {
+					t.Errorf("Step 1 expected disabled=true, got %v", om["disabled"])
+				}
+				if _, hasConf := om["portconf_id"]; hasConf {
+					t.Errorf("Step 1 expected portconf_id to be removed, got %v", om["portconf_id"])
+				}
+				w.WriteHeader(http.StatusOK)
+				return
+			} else if putStep == 2 {
+				// Step 2: disabled=false, portconf_id must be restored
+				if om["disabled"] != false {
+					t.Errorf("Step 2 expected disabled=false, got %v", om["disabled"])
+				}
+				if om["portconf_id"] != "profile-radius-mab" {
+					t.Errorf("Step 2 expected portconf_id='profile-radius-mab', got %v", om["portconf_id"])
+				}
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:  ts.URL,
+		AuthMode: "apikey",
+		APIKey:   "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
+	err = client.RestartPortNonPoE("6c:63:f8:3f:08:fb", 18)
+	if err != nil {
+		t.Fatalf("RestartPortNonPoE failed: %v", err)
+	}
+	if putStep != 2 {
+		t.Fatalf("Expected exactly 2 PUT calls (disable, then enable/restore), got %d", putStep)
+	}
+}
+
+func TestRestartPortAutoDetect(t *testing.T) {
+	origPause := PortBouncePause
+	PortBouncePause = 10 * time.Millisecond
+	defer func() { PortBouncePause = origPause }()
+
+	nonPoEBounced := false
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet && r.URL.Path == "/proxy/network/api/s/default/stat/device" {
+			resp := map[string]interface{}{
+				"meta": map[string]string{"rc": "ok"},
+				"data": []map[string]interface{}{
+					{
+						"_id":   "sw-nonpoe-1",
+						"name":  "USW-48-G2",
+						"mac":   "6c:63:f8:3f:08:fb",
+						"model": "USL48B",
+						"type":  "usw",
+						"port_overrides": []map[string]interface{}{
+							{
+								"port_idx":    5,
+								"portconf_id": "conf-123",
+							},
+						},
+						"port_table": []map[string]interface{}{
+							{
+								"port_idx":    5,
+								"port_poe":    false,
+								"poe_caps":    0,
+								"portconf_id": "conf-123",
+							},
+						},
+					},
+				},
+			}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+
+		if r.Method == http.MethodPut && r.URL.Path == "/proxy/network/api/s/default/rest/device/sw-nonpoe-1" {
+			nonPoEBounced = true
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		// Should NOT hit devmgr power-cycle for non-PoE port
+		if r.URL.Path == "/proxy/network/api/s/default/cmd/devmgr" {
+			t.Errorf("Should not call cmd/devmgr power-cycle for non-PoE port")
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer ts.Close()
+
+	client, err := NewClient(Config{
+		BaseURL:  ts.URL,
+		AuthMode: "apikey",
+		APIKey:   "test-key",
+	})
+	if err != nil {
+		t.Fatalf("NewClient failed: %v", err)
+	}
+
+	err = client.RestartPort("6c:63:f8:3f:08:fb", 5)
+	if err != nil {
+		t.Fatalf("RestartPort failed: %v", err)
+	}
+	if !nonPoEBounced {
+		t.Fatalf("Expected non-PoE bounce to be executed")
+	}
+}
+

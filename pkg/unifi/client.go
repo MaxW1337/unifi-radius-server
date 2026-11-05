@@ -487,7 +487,289 @@ func (c *Client) ReconnectClient(clientMAC string) error {
 	return errors.New("failed to send reconnect command to UniFi")
 }
 
+// PortBouncePause defines the delay between deactivating and reactivating a non-PoE port.
+// Defaults to 1500ms; can be lowered in unit tests.
+var PortBouncePause = 1500 * time.Millisecond
+
+type rawDeviceData struct {
+	ID            string                   `json:"_id"`
+	MAC           string                   `json:"mac"`
+	Name          string                   `json:"name"`
+	Model         string                   `json:"model"`
+	Type          string                   `json:"type"`
+	PortOverrides []map[string]interface{} `json:"port_overrides"`
+	PortTable     []map[string]interface{} `json:"port_table"`
+}
+
+func (c *Client) fetchRawDevices() ([]rawDeviceData, error) {
+	endpoints := []string{
+		fmt.Sprintf("/proxy/network/api/s/%s/stat/device", c.cfg.Site),
+		fmt.Sprintf("/api/s/%s/stat/device", c.cfg.Site),
+	}
+
+	for _, ep := range endpoints {
+		resp, err := c.doRequest(http.MethodGet, ep, nil)
+		if err != nil {
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			continue
+		}
+
+		var apiResp struct {
+			Data []rawDeviceData `json:"data"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+			return nil, err
+		}
+		return apiResp.Data, nil
+	}
+
+	return nil, errors.New("failed to fetch devices from UniFi")
+}
+
+func (c *Client) putDevice(deviceID string, payload map[string]interface{}) error {
+	bodyBytes, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+
+	endpoints := []string{
+		fmt.Sprintf("/proxy/network/api/s/%s/rest/device/%s", c.cfg.Site, deviceID),
+		fmt.Sprintf("/api/s/%s/rest/device/%s", c.cfg.Site, deviceID),
+	}
+
+	var lastErr error
+	for _, ep := range endpoints {
+		resp, err := c.doRequest(http.MethodPut, ep, bytes.NewReader(bodyBytes))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			return nil
+		}
+		if resp.StatusCode == http.StatusNotFound {
+			continue
+		}
+
+		var apiResp unifiResponse
+		if err := json.NewDecoder(resp.Body).Decode(&apiResp); err == nil && apiResp.Meta.Msg != "" {
+			lastErr = fmt.Errorf("UniFi error: %s", apiResp.Meta.Msg)
+		} else {
+			lastErr = fmt.Errorf("request failed with status %d", resp.StatusCode)
+		}
+	}
+
+	if lastErr != nil {
+		return lastErr
+	}
+	return errors.New("failed to update device in UniFi")
+}
+
+// RestartPortNonPoE performs a link bounce on non-PoE switch ports by removing the port profile,
+// disabling the port, waiting briefly for link down, and then re-enabling the port and restoring the profile.
+func (c *Client) RestartPortNonPoE(switchMAC string, portIdx int) error {
+	normMAC, err := utils.NormalizeMAC(switchMAC)
+	if err != nil {
+		normMAC = strings.ToLower(strings.TrimSpace(switchMAC))
+	}
+	if normMAC == "" {
+		return errors.New("switch MAC is required")
+	}
+	if portIdx <= 0 {
+		return errors.New("invalid port index")
+	}
+
+	devices, err := c.fetchRawDevices()
+	if err != nil {
+		return err
+	}
+
+	var targetDev *rawDeviceData
+	for i := range devices {
+		devMAC, err := utils.NormalizeMAC(devices[i].MAC)
+		if err != nil {
+			devMAC = strings.ToLower(strings.TrimSpace(devices[i].MAC))
+		}
+		if devMAC == normMAC {
+			targetDev = &devices[i]
+			break
+		}
+	}
+
+	if targetDev == nil {
+		return fmt.Errorf("switch device with MAC %s not found in UniFi", switchMAC)
+	}
+	if targetDev.ID == "" {
+		return fmt.Errorf("switch device %s has no ID", switchMAC)
+	}
+
+	portOverrides := targetDev.PortOverrides
+	if portOverrides == nil {
+		portOverrides = []map[string]interface{}{}
+	}
+
+	// Locate port in port_overrides
+	targetOverrideIdx := -1
+	var originalPortconfID string
+	var portName string
+
+	for i, o := range portOverrides {
+		idxVal, ok := o["port_idx"]
+		if !ok {
+			continue
+		}
+		var pIdx int
+		switch v := idxVal.(type) {
+		case float64:
+			pIdx = int(v)
+		case int:
+			pIdx = v
+		}
+		if pIdx == portIdx {
+			targetOverrideIdx = i
+			if pConf, ok := o["portconf_id"].(string); ok {
+				originalPortconfID = pConf
+			}
+			if n, ok := o["name"].(string); ok {
+				portName = n
+			}
+			break
+		}
+	}
+
+	// Also inspect port_table for original port configuration if not in overrides
+	for _, pt := range targetDev.PortTable {
+		idxVal, ok := pt["port_idx"]
+		if !ok {
+			continue
+		}
+		var pIdx int
+		switch v := idxVal.(type) {
+		case float64:
+			pIdx = int(v)
+		case int:
+			pIdx = v
+		}
+		if pIdx == portIdx {
+			if originalPortconfID == "" {
+				if pConf, ok := pt["portconf_id"].(string); ok {
+					originalPortconfID = pConf
+				}
+			}
+			if portName == "" {
+				if n, ok := pt["name"].(string); ok {
+					portName = n
+				}
+			}
+			break
+		}
+	}
+
+	if targetOverrideIdx == -1 {
+		// Port had no previous override; create a new entry in port_overrides
+		newOverride := map[string]interface{}{
+			"port_idx": portIdx,
+		}
+		if portName != "" {
+			newOverride["name"] = portName
+		}
+		portOverrides = append(portOverrides, newOverride)
+		targetOverrideIdx = len(portOverrides) - 1
+	}
+
+	// Step 1: Remove port profile and disable port
+	delete(portOverrides[targetOverrideIdx], "portconf_id")
+	portOverrides[targetOverrideIdx]["disabled"] = true
+
+	if err := c.putDevice(targetDev.ID, map[string]interface{}{"port_overrides": portOverrides}); err != nil {
+		return fmt.Errorf("failed to disable port %d: %w", portIdx, err)
+	}
+
+	// Pause to allow physical link layer to drop on switch and client
+	if PortBouncePause > 0 {
+		time.Sleep(PortBouncePause)
+	}
+
+	// Step 2: Re-enable port and restore original port profile
+	portOverrides[targetOverrideIdx]["disabled"] = false
+	if originalPortconfID != "" {
+		portOverrides[targetOverrideIdx]["portconf_id"] = originalPortconfID
+	}
+
+	if err := c.putDevice(targetDev.ID, map[string]interface{}{"port_overrides": portOverrides}); err != nil {
+		return fmt.Errorf("failed to re-enable port %d and restore profile: %w", portIdx, err)
+	}
+
+	return nil
+}
+
+// RestartPort restarts a switch port. It automatically detects if the port is non-PoE
+// and uses RestartPortNonPoE. On PoE ports it attempts power-cycle first with fallback to RestartPortNonPoE.
+func (c *Client) RestartPort(switchMAC string, portIdx int) error {
+	normMAC, err := utils.NormalizeMAC(switchMAC)
+	if err != nil {
+		normMAC = strings.ToLower(strings.TrimSpace(switchMAC))
+	}
+	if normMAC == "" {
+		return errors.New("switch MAC is required")
+	}
+	if portIdx <= 0 {
+		return errors.New("invalid port index")
+	}
+
+	// Check if port has PoE capability in port_table
+	devices, err := c.fetchRawDevices()
+	if err == nil {
+		for _, dev := range devices {
+			devMAC, err := utils.NormalizeMAC(dev.MAC)
+			if err != nil {
+				devMAC = strings.ToLower(strings.TrimSpace(dev.MAC))
+			}
+			if devMAC == normMAC {
+				for _, pt := range dev.PortTable {
+					var pIdx int
+					switch v := pt["port_idx"].(type) {
+					case float64:
+						pIdx = int(v)
+					case int:
+						pIdx = v
+					}
+					if pIdx == portIdx {
+						hasPoE := false
+						if poe, ok := pt["port_poe"].(bool); ok && poe {
+							hasPoE = true
+						}
+						if caps, ok := pt["poe_caps"].(float64); ok && caps > 0 {
+							hasPoE = true
+						}
+						// If explicitly non-PoE, directly use non-PoE bounce
+						if !hasPoE {
+							return c.RestartPortNonPoE(switchMAC, portIdx)
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+
+	// Attempt standard PoE power-cycle first
+	if err := c.PowerCyclePort(switchMAC, portIdx); err == nil {
+		return nil
+	}
+
+	// Fallback to non-PoE port toggle
+	return c.RestartPortNonPoE(switchMAC, portIdx)
+}
+
 // PowerCyclePort instructs UniFi to power cycle / restart a switch port.
+// If power-cycle fails (e.g. on non-PoE switch), it automatically falls back to RestartPortNonPoE.
 func (c *Client) PowerCyclePort(switchMAC string, portIdx int) error {
 	switchMAC = strings.ToLower(strings.TrimSpace(switchMAC))
 	if switchMAC == "" {
@@ -534,7 +816,14 @@ func (c *Client) PowerCyclePort(switchMAC string, portIdx int) error {
 	}
 
 	if lastErr != nil {
+		// If power-cycle failed (e.g. non-PoE switch), try non-PoE link bounce as fallback
+		if fallbackErr := c.RestartPortNonPoE(switchMAC, portIdx); fallbackErr == nil {
+			return nil
+		}
 		return lastErr
+	}
+	if fallbackErr := c.RestartPortNonPoE(switchMAC, portIdx); fallbackErr == nil {
+		return nil
 	}
 	return errors.New("failed to send power-cycle command to UniFi")
 }

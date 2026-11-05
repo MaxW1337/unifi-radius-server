@@ -1077,11 +1077,11 @@ func (s *Server) executePortRestartOrReconnect(c *models.Client) {
 
 	portIdx, _ := strconv.Atoi(c.UniFiSwitchPort)
 	if c.UniFiSwitchMAC != "" && portIdx > 0 {
-		err := unifiClient.PowerCyclePort(c.UniFiSwitchMAC, portIdx)
+		err := unifiClient.RestartPort(c.UniFiSwitchMAC, portIdx)
 		if err != nil {
-			s.publishLog(eventbus.LogLevelWarn, "CLIENT-ACTION", fmt.Sprintf("Power-Cycle für Port %d auf Switch %s (%s) fehlgeschlagen: %v. Führe Fallback-Reconnect durch...", portIdx, c.UniFiSwitchName, c.UniFiSwitchMAC, err))
+			s.publishLog(eventbus.LogLevelWarn, "CLIENT-ACTION", fmt.Sprintf("Port-Neustart für Port %d auf Switch %s (%s) fehlgeschlagen: %v. Führe Fallback-Reconnect durch...", portIdx, c.UniFiSwitchName, c.UniFiSwitchMAC, err))
 		} else {
-			s.publishLog(eventbus.LogLevelInfo, "CLIENT-ACTION", fmt.Sprintf("Port %d auf Switch %s (%s) für Client %s erfolgreich neu gestartet (Power-Cycle).", portIdx, c.UniFiSwitchName, c.UniFiSwitchMAC, c.MACAddress))
+			s.publishLog(eventbus.LogLevelInfo, "CLIENT-ACTION", fmt.Sprintf("Port %d auf Switch %s (%s) für Client %s erfolgreich neu gestartet (PoE Cycle bzw. Non-PoE Port Toggle).", portIdx, c.UniFiSwitchName, c.UniFiSwitchMAC, c.MACAddress))
 		}
 	} else if c.UniFiSwitchPort != "" && portIdx > 0 {
 		s.publishLog(eventbus.LogLevelInfo, "CLIENT-ACTION", fmt.Sprintf("Switch-MAC unbekannt für Port %s. Führe Reconnect (Kick) für Client %s durch...", c.UniFiSwitchPort, c.MACAddress))
