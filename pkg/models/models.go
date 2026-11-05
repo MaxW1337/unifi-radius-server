@@ -137,6 +137,19 @@ type SystemLog struct {
 	Message   string    `json:"message"`
 }
 
+// BanInfo represents an active auto-quarantine ban.
+type BanInfo struct {
+	Target       string    `json:"target"` // MAC or Username
+	TargetType   string    `json:"target_type"` // "mac" or "user"
+	Reason       string    `json:"reason"`
+	FailureCount int       `json:"failure_count"`
+	BannedAt     time.Time `json:"banned_at"`
+	ExpiresAt    time.Time `json:"expires_at"` // Zero time if permanent
+	Permanent    bool      `json:"permanent"`
+	LastNASIP    string    `json:"last_nas_ip,omitempty"`
+	LastNASPort  string    `json:"last_nas_port,omitempty"`
+}
+
 // Settings represents global system configuration.
 type Settings struct {
 	DefaultAllowVLAN   int              `json:"default_allow_vlan"`
@@ -146,6 +159,13 @@ type Settings struct {
 	RadiusDebugMode        bool             `json:"radius_debug_mode"`
 	AutoDisconnectOnChange bool             `json:"auto_disconnect_on_change"`
 	WebPort                int              `json:"web_port"`
+
+	// Intrusion Defense & Auto-Quarantine (Fail2ban)
+	DefenseEnabled            bool `json:"defense_enabled"`
+	DefenseMaxFailures        int  `json:"defense_max_failures"`
+	DefenseWindowSeconds      int  `json:"defense_window_seconds"`
+	DefenseBanDurationMinutes int  `json:"defense_ban_duration_minutes"`
+	DefenseMACSpoofDetection  bool `json:"defense_mac_spoof_detection"`
 	WebAdminPassword   string           `json:"-"`
 	UniFiURL           string           `json:"unifi_url"`
 	UniFiAuthMode      string           `json:"unifi_auth_mode"` // 'apikey' or 'credentials'

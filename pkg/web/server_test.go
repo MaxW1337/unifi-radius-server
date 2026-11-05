@@ -930,5 +930,100 @@ func TestPrometheusMetricsAndAutoDisconnect(t *testing.T) {
 	}
 }
 
+func TestIntrusionDefenseSettingsAndUnban(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	// 1. Test saving defense settings
+	form := url.Values{
+		"unifi_url":                    {"https://127.0.0.1"},
+		"unifi_auth_mode":              {"apikey"},
+		"unifi_sync_interval":          {"5"},
+		"global_shared_secret":         {"testsecret"},
+		"radius_auth_port":             {"1812"},
+		"default_allow_vlan":           {"10"},
+		"web_port":                     {"9182"},
+		"log_retention_days":           {"30"},
+		"defense_enabled":              {"1"},
+		"defense_max_failures":         {"3"},
+		"defense_window_seconds":       {"60"},
+		"defense_ban_duration_minutes": {"15"},
+		"defense_mac_spoof_detection":  {"1"},
+	}
+	reqSave := httptest.NewRequest(http.MethodPost, "/settings/save", strings.NewReader(form.Encode()))
+	reqSave.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrSave := httptest.NewRecorder()
+	srv.handleSaveSettings(rrSave, reqSave)
+
+	settings, err := db.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings failed: %v", err)
+	}
+	if !settings.DefenseEnabled {
+		t.Errorf("Expected DefenseEnabled to be true")
+	}
+	if settings.DefenseMaxFailures != 3 {
+		t.Errorf("Expected DefenseMaxFailures=3, got %d", settings.DefenseMaxFailures)
+	}
+	if settings.DefenseWindowSeconds != 60 {
+		t.Errorf("Expected DefenseWindowSeconds=60, got %d", settings.DefenseWindowSeconds)
+	}
+	if settings.DefenseBanDurationMinutes != 15 {
+		t.Errorf("Expected DefenseBanDurationMinutes=15, got %d", settings.DefenseBanDurationMinutes)
+	}
+	if !settings.DefenseMACSpoofDetection {
+		t.Errorf("Expected DefenseMACSpoofDetection to be true")
+	}
+
+	// 2. Ban a client
+	mac := "00:11:22:33:44:55"
+	_ = db.CreateClient(&models.Client{
+		MACAddress: mac,
+		Status:     models.ClientStatusActive,
+	})
+
+	srv.DefenseManager().PermanentBan(mac)
+	if banned, _ := srv.DefenseManager().IsBanned(mac, ""); !banned {
+		t.Fatalf("Expected client %s to be banned", mac)
+	}
+
+	// 3. Render clients page to verify template executes and displays quarantine
+	reqClients := httptest.NewRequest(http.MethodGet, "/clients", nil)
+	rrClients := httptest.NewRecorder()
+	srv.handleClients(rrClients, reqClients)
+	if rrClients.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from /clients, got %d", rrClients.Code)
+	}
+	body := rrClients.Body.String()
+	if !strings.Contains(body, "Quarantäne") && !strings.Contains(body, "Quarantine") {
+		t.Errorf("Expected Quarantäne badge in rendered clients page, got:\n%s", body)
+	}
+	if !strings.Contains(body, "Entsperren") && !strings.Contains(body, "Unban") {
+		t.Errorf("Expected Entsperren button in rendered clients page")
+	}
+
+	// 4. Test handleSecurityUnban
+	unbanForm := url.Values{"target": {mac}}
+	reqUnban := httptest.NewRequest(http.MethodPost, "/api/security/unban", strings.NewReader(unbanForm.Encode()))
+	reqUnban.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrUnban := httptest.NewRecorder()
+	srv.handleSecurityUnban(rrUnban, reqUnban)
+
+	if banned, _ := srv.DefenseManager().IsBanned(mac, ""); banned {
+		t.Errorf("Expected client %s to be unbanned after calling handleSecurityUnban", mac)
+	}
+
+	// 5. Test handleSecurityBan
+	reqBan := httptest.NewRequest(http.MethodPost, "/api/security/ban", strings.NewReader(unbanForm.Encode()))
+	reqBan.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrBan := httptest.NewRecorder()
+	srv.handleSecurityBan(rrBan, reqBan)
+
+	if banned, _ := srv.DefenseManager().IsBanned(mac, ""); !banned {
+		t.Errorf("Expected client %s to be banned after calling handleSecurityBan", mac)
+	}
+}
+
+
 
 

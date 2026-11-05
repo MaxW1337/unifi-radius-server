@@ -10,6 +10,7 @@
     <a href="#sec-unifi" class="settings-nav-pill active">UniFi</a>
     <a href="#sec-migration" class="settings-nav-pill">Migration</a>
     <a href="#sec-radius" class="settings-nav-pill">RADIUS & MAB</a>
+    <a href="#sec-defense" class="settings-nav-pill">Sicherheit (Fail2ban)</a>
     <a href="#sec-system" class="settings-nav-pill">Web & Logs</a>
     <a href="#sec-updates" class="settings-nav-pill">Updates</a>
     <a href="#sec-notify" class="settings-nav-pill">Benachrichtigungen</a>
@@ -201,6 +202,59 @@
               <div style="font-weight: 600; color: var(--text-main);">{{tr .Lang "settings.auto_disconnect_title"}}</div>
               <div class="form-text" style="margin-top: 2px;">
                 {{tr .Lang "settings.auto_disconnect_hint"}}
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Intrusion Defense (Fail2ban) -->
+    <div class="panel" id="sec-defense">
+      <div class="panel-header">
+        <div>
+          <h3 class="panel-title">{{tr .Lang "security.title"}}</h3>
+          <p class="panel-subtitle">{{tr .Lang "security.subtitle"}}</p>
+        </div>
+      </div>
+      <div style="padding: 24px;">
+        <div class="form-group">
+          <label style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer;">
+            <input type="checkbox" name="defense_enabled" value="1" {{if .Settings.DefenseEnabled}}checked{{end}} style="margin-top: 3px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-main);">{{tr .Lang "security.enabled"}}</div>
+              <div class="form-text" style="margin-top: 2px;">
+                Automatischer Hard-Reject bei Brute-Force & Credential-Stuffing mit Sofort-Push (Telegram).
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-top: 16px;">
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "security.max_failures"}}</label>
+            <input type="number" name="defense_max_failures" value="{{.Settings.DefenseMaxFailures}}" min="1" max="100" class="form-control">
+            <div class="form-text">{{tr .Lang "security.max_failures_hint"}}</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "security.window_seconds"}}</label>
+            <input type="number" name="defense_window_seconds" value="{{.Settings.DefenseWindowSeconds}}" min="5" max="3600" class="form-control">
+            <div class="form-text">{{tr .Lang "security.window_hint"}}</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">{{tr .Lang "security.ban_duration"}}</label>
+            <input type="number" name="defense_ban_duration_minutes" value="{{.Settings.DefenseBanDurationMinutes}}" min="1" max="1440" class="form-control">
+            <div class="form-text">{{tr .Lang "security.ban_duration_hint"}}</div>
+          </div>
+        </div>
+
+        <div class="form-group" style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-color);">
+          <label style="display: flex; align-items: flex-start; gap: 12px; cursor: pointer;">
+            <input type="checkbox" name="defense_mac_spoof_detection" value="1" {{if .Settings.DefenseMACSpoofDetection}}checked{{end}} style="margin-top: 3px;">
+            <div>
+              <div style="font-weight: 600; color: var(--text-main);">{{tr .Lang "security.mac_spoofing"}}</div>
+              <div class="form-text" style="margin-top: 2px;">
+                {{tr .Lang "security.mac_spoofing_hint"}}
               </div>
             </div>
           </label>

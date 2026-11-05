@@ -112,3 +112,4 @@ func TestDisconnectClientInvalidMAC(t *testing.T) {
 		t.Error("Expected error for invalid MAC, got nil")
 	}
 }
+

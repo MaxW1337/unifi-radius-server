@@ -26,6 +26,12 @@ type InlineKeyboardButton struct {
 	CallbackData string `json:"callback_data"`
 }
 
+// SecurityManager provides unban and permanent ban actions for interactive bots.
+type SecurityManager interface {
+	Unban(target string) bool
+	PermanentBan(target string) bool
+}
+
 // TelegramClient implements a 2-way interactive Telegram Bot with long-polling and inline buttons.
 type TelegramClient struct {
 	token          string
@@ -33,6 +39,12 @@ type TelegramClient struct {
 	db             *database.DB
 	syncSvc        *unifi.SyncService
 	httpClient     *http.Client
+	secMgr         SecurityManager
+}
+
+// SetSecurityManager sets the intrusion defense manager for unban/ban callbacks.
+func (tg *TelegramClient) SetSecurityManager(sm SecurityManager) {
+	tg.secMgr = sm
 }
 
 // NewTelegramClient creates a new interactive Telegram bot client.
@@ -189,6 +201,10 @@ func formatTelegramEventHTML(ev NotificationEvent) string {
 		icon = "📜"
 	case EventDailySummary:
 		icon = "📊"
+	case EventQuarantineBan:
+		icon = "🚨"
+	case EventMACSpoofAlert:
+		icon = "⚠️"
 	}
 
 	var sb strings.Builder
@@ -225,6 +241,34 @@ func formatTelegramEventHTML(ev NotificationEvent) string {
 }
 
 func buildTelegramButtons(ev NotificationEvent) [][]InlineKeyboardButton {
+	if ev.Type == EventQuarantineBan {
+		target := ev.ClientMAC
+		if target == "" {
+			target = ev.Username
+		}
+		if target != "" {
+			return [][]InlineKeyboardButton{
+				{
+					{Text: "🔓 Sofort entsperren", CallbackData: fmt.Sprintf("unban|%s", target)},
+					{Text: "🛡️ Dauerhaft sperren", CallbackData: fmt.Sprintf("permban|%s", target)},
+				},
+				{
+					{Text: "⚡ Reconnect (Kick)", CallbackData: fmt.Sprintf("kck|%s", target)},
+				},
+			}
+		}
+	}
+
+	if ev.Type == EventMACSpoofAlert && ev.ClientMAC != "" {
+		mac := ev.ClientMAC
+		return [][]InlineKeyboardButton{
+			{
+				{Text: "🚫 Gerät sperren", CallbackData: fmt.Sprintf("blk|%s", mac)},
+				{Text: "⚡ Reconnect (Kick)", CallbackData: fmt.Sprintf("kck|%s", mac)},
+			},
+		}
+	}
+
 	if ev.Type != EventPendingDevice || ev.ClientMAC == "" {
 		return nil
 	}
@@ -462,6 +506,36 @@ func (tg *TelegramClient) handleCallback(ctx context.Context, cbID string, chatI
 			}
 			return
 		}
+
+	case "unban":
+		// unban|<target>
+		if len(parts) >= 2 {
+			target := parts[1]
+			if tg.secMgr != nil {
+				tg.secMgr.Unban(target)
+			}
+			tg.AnswerCallbackQuery(ctx, cbID, fmt.Sprintf("Quarantäne für %s aufgehoben", target))
+			if chatID != 0 && msgID != 0 {
+				_ = tg.EditMessageText(ctx, chatID, msgID, fmt.Sprintf("🔓 <b>Quarantäne aufgehoben!</b>\n• Ziel: <code>%s</code>\n• Status: <b>Entsperrt & Reconnect getriggert</b>", html.EscapeString(target)), nil)
+			}
+			return
+		}
+		tg.AnswerCallbackQuery(ctx, cbID, "Fehler beim Entsperren.")
+
+	case "permban":
+		// permban|<target>
+		if len(parts) >= 2 {
+			target := parts[1]
+			if tg.secMgr != nil {
+				tg.secMgr.PermanentBan(target)
+			}
+			tg.AnswerCallbackQuery(ctx, cbID, fmt.Sprintf("Ziel %s dauerhaft blockiert", target))
+			if chatID != 0 && msgID != 0 {
+				_ = tg.EditMessageText(ctx, chatID, msgID, fmt.Sprintf("🛡️ <b>Dauerhaft gesperrt!</b>\n• Ziel: <code>%s</code>\n• Status: <b>Dauerhaft deaktiviert</b>", html.EscapeString(target)), nil)
+			}
+			return
+		}
+		tg.AnswerCallbackQuery(ctx, cbID, "Fehler beim Sperren.")
 
 	case "cancel":
 		tg.AnswerCallbackQuery(ctx, cbID, "Abgebrochen.")

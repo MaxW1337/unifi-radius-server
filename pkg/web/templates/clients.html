@@ -63,6 +63,8 @@
         </thead>
         <tbody>
           {{range .Clients}}
+          {{$ban := index $.ActiveBans .MACAddress}}
+          {{if not $ban}}{{$ban = index $.ActiveBans .Username}}{{end}}
           <tr>
             <td>
               {{if .MACAddress}}
@@ -83,7 +85,9 @@
               {{end}}
             </td>
             <td>
-              {{if eq .Status "active"}}
+              {{if $ban}}
+                <span class="badge reject" title="{{$ban.Reason}}">🚫 {{tr $.Lang "security.badge_quarantine"}}{{if not $ban.Permanent}} (bis {{$ban.ExpiresAt.Format "15:04"}}){{end}}</span>
+              {{else if eq .Status "active"}}
                 <span class="badge active">{{tr $.Lang "common.active"}}</span>
               {{else if eq .Status "pending"}}
                 <span class="badge pending">{{tr $.Lang "common.pending"}}</span>
@@ -122,6 +126,14 @@
             </td>
             <td style="text-align: right;">
               <div style="display: inline-flex; gap: 6px; align-items: center;">
+                {{if $ban}}
+                  <form method="POST" action="/api/security/unban" style="display:inline;">
+                    <input type="hidden" name="target" value="{{$ban.Target}}">
+                    <button type="submit" class="btn btn-secondary btn-sm" title="{{tr $.Lang "security.btn_unban"}}" style="color: #10b981; border-color: rgba(16, 185, 129, 0.4); font-weight: 500;">
+                      🔓 {{tr $.Lang "security.btn_unban"}}
+                    </button>
+                  </form>
+                {{end}}
                 {{if .MACAddress}}
                   {{if or .UniFiIsWired .UniFiSwitchPort}}
                     <button type="button" class="btn btn-secondary btn-sm" title="{{tr $.Lang "clients.btn_restart_port_tooltip"}}"

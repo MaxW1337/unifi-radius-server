@@ -15,6 +15,7 @@ import (
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
 	"github.com/mwittenburg/unifi-radius-server/pkg/metrics"
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
+	"github.com/mwittenburg/unifi-radius-server/pkg/security"
 	"github.com/mwittenburg/unifi-radius-server/pkg/utils"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -49,6 +50,14 @@ type Server struct {
 	mu          sync.RWMutex
 	listening   bool
 	debugMode   bool
+	defense     *security.DefenseManager
+}
+
+// SetDefenseManager attaches the intrusion defense manager for auto-quarantine.
+func (s *Server) SetDefenseManager(dm *security.DefenseManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.defense = dm
 }
 
 // NewServer initializes a high-concurrency RADIUS server instance.
@@ -364,6 +373,32 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 	var enrichedName, enrichedVendor string
 	var clientMAC, username string
 
+	if norm, err := utils.NormalizeMAC(macCandidate); err == nil {
+		clientMAC = norm
+	}
+	username = strings.TrimSpace(rawUserName)
+
+	// Intrusion Defense: Check if client or user is under active auto-quarantine ban
+	if s.defense != nil {
+		if isBanned, banInfo := s.defense.IsBanned(clientMAC, username); isBanned && banInfo != nil {
+			status = "REJECT"
+			logReason = fmt.Sprintf("Auto-Quarantäne aktiv (Gebannt bis %s): %s", banInfo.ExpiresAt.Format("15:04:05"), banInfo.Reason)
+			respPacket := req.CreateResponse(CodeAccessReject)
+			respBytes, encErr := respPacket.Encode(secretBytes)
+			if encErr == nil {
+				_, _ = s.conn.WriteToUDP(respBytes, remoteAddr)
+			}
+			metrics.RecordRadiusRequest("mab", "Reject", time.Since(start).Seconds())
+			s.bus.PublishLog(eventbus.LogEvent{
+				Timestamp: time.Now().Format("15:04:05"),
+				Level:     eventbus.LogLevelWarn,
+				Source:    "SECURITY",
+				Message:   fmt.Sprintf("[Auto-Quarantäne Hard-Reject] %s von %s:%s blockiert (%s)", firstNonEmpty(clientMAC, username), remoteIP, nasPort, logReason),
+			})
+			return
+		}
+	}
+
 	var respPacket *Packet
 
 	if macCandidate != "" {
@@ -542,6 +577,15 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 		statusFormatted = "Reject"
 	}
 	metrics.RecordRadiusRequest(string(authType), statusFormatted, time.Since(start).Seconds())
+
+	// Record Intrusion Defense failure / success
+	if s.defense != nil {
+		if status == "REJECT" {
+			s.defense.RecordFailure(clientMAC, username, remoteIP, nasPort, logReason)
+		} else if status == "ACCEPT" {
+			s.defense.RecordSuccess(clientMAC, username)
+		}
+	}
 
 	// 4. Asynchronous Non-Blocking Logging & WebSocket Broadcast (Slow Path)
 	authLog := models.AuthLog{

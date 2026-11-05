@@ -11,6 +11,8 @@ const (
 	EventReconnect     = "reconnect"
 	EventCAExpiry      = "ca_expiry"
 	EventDailySummary  = "daily"
+	EventQuarantineBan = "quarantine"
+	EventMACSpoofAlert = "spoof_alert"
 )
 
 // ActionButton represents an interactive button for Telegram and Discord.

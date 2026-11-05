@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -220,6 +221,8 @@ func (s *SyncService) enrichRegisteredClients(infoMap map[string]UniFiClientInfo
 		return 0
 	}
 
+	settings, _ := s.db.GetSettings()
+
 	enrichedCount := 0
 	for _, c := range clients {
 		if c.MACAddress == "" {
@@ -228,6 +231,34 @@ func (s *SyncService) enrichRegisteredClients(infoMap map[string]UniFiClientInfo
 		info, found := infoMap[c.MACAddress]
 		if !found {
 			continue
+		}
+
+		// Intrusion Defense: MAC Spoofing & Anomalous Vendor / Hostname Detection
+		if settings != nil && settings.DefenseMACSpoofDetection {
+			vendorMismatch := c.UniFiVendor != "" && info.Vendor != "" && !strings.EqualFold(c.UniFiVendor, info.Vendor)
+			suspiciousHostname := info.Hostname != "" && (strings.Contains(strings.ToLower(info.Hostname), "kali") ||
+				strings.Contains(strings.ToLower(info.Hostname), "attack") ||
+				strings.Contains(strings.ToLower(info.Hostname), "spoof"))
+
+			if vendorMismatch || suspiciousHostname {
+				reason := fmt.Sprintf("Hersteller-Abweichung: war '%s', meldet sich als '%s'", c.UniFiVendor, info.Vendor)
+				if suspiciousHostname {
+					reason = fmt.Sprintf("Verdächtiger Hostname '%s' (war '%s')", info.Hostname, c.UniFiHostname)
+				}
+				clientLabel := c.UniFiName
+				if clientLabel == "" {
+					clientLabel = c.MACAddress
+				}
+				s.publishLog(eventbus.LogLevelWarn, fmt.Sprintf("⚠️ [Sicherheitsalarm - Mögliches MAC-Spoofing] Client %s (%s): %s", c.MACAddress, clientLabel, reason))
+				if s.bus != nil {
+					s.bus.PublishLog(eventbus.LogEvent{
+						Timestamp: time.Now().Format("15:04:05"),
+						Level:     eventbus.LogLevelWarn,
+						Source:    "SECURITY",
+						Message:   fmt.Sprintf("[MAC-Spoofing Verdacht] %s (%s): %s", c.MACAddress, clientLabel, reason),
+					})
+				}
+			}
 		}
 
 		changed := false

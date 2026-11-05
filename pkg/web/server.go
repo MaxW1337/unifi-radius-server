@@ -31,6 +31,7 @@ import (
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
 	"github.com/mwittenburg/unifi-radius-server/pkg/notify"
 	"github.com/mwittenburg/unifi-radius-server/pkg/radius"
+	"github.com/mwittenburg/unifi-radius-server/pkg/security"
 	"github.com/mwittenburg/unifi-radius-server/pkg/unifi"
 	"github.com/mwittenburg/unifi-radius-server/pkg/updater"
 	"github.com/mwittenburg/unifi-radius-server/pkg/version"
@@ -139,6 +140,7 @@ type Server struct {
 	sessions    map[string]time.Time
 	sessionsMu  sync.RWMutex
 	limiter     *loginLimiter
+	defense     *security.DefenseManager
 	port        int
 	version     string
 }
@@ -209,6 +211,11 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 		syncSvc.SetBus(bus)
 	}
 
+	s.defense = security.NewDefenseManager(db, bus, s.notifySvc, s)
+	if s.notifySvc != nil {
+		s.notifySvc.SetSecurityManager(s.defense)
+	}
+
 	mux := http.NewServeMux()
 
 	// Embedded static assets (CSS, JS, SVGs)
@@ -259,6 +266,8 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 	mux.HandleFunc("/clients/delete", s.requireAuth(s.csrfProtect(s.handleDeleteClient)))
 	mux.HandleFunc("/clients/restart-port", s.requireAuth(s.csrfProtect(s.handleRestartPort)))
 	mux.HandleFunc("/clients/reconnect", s.requireAuth(s.csrfProtect(s.handleReconnectClient)))
+	mux.HandleFunc("/api/security/unban", s.requireAuth(s.csrfProtect(s.handleSecurityUnban)))
+	mux.HandleFunc("/api/security/ban", s.requireAuth(s.csrfProtect(s.handleSecurityBan)))
 
 	mux.HandleFunc("/certificates", s.requireAuth(s.handleCertificates))
 	mux.HandleFunc("/certificates/init-ca", s.requireAuth(s.csrfProtect(s.handleInitCA)))
@@ -314,6 +323,9 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 // SetRadiusServer sets or overrides the RADIUS engine reference.
 func (s *Server) SetRadiusServer(r *radius.Server) {
 	s.radiusSrv = r
+	if s.radiusSrv != nil && s.defense != nil {
+		s.radiusSrv.SetDefenseManager(s.defense)
+	}
 }
 
 // RadiusServer returns the RADIUS engine reference.
@@ -321,9 +333,20 @@ func (s *Server) RadiusServer() *radius.Server {
 	return s.radiusSrv
 }
 
+// DefenseManager returns the security intrusion defense manager.
+func (s *Server) DefenseManager() *security.DefenseManager {
+	return s.defense
+}
+
 // SetNotifyService sets or overrides the notification service.
 func (s *Server) SetNotifyService(n *notify.Service) {
 	s.notifySvc = n
+	if s.defense != nil {
+		s.defense.SetDispatcher(n)
+		if n != nil {
+			n.SetSecurityManager(s.defense)
+		}
+	}
 }
 
 // NotifyService returns the notification service.
@@ -620,6 +643,11 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	var activeBans []*models.BanInfo
+	if s.defense != nil {
+		activeBans = s.defense.ListActiveBans()
+	}
+
 	data := map[string]interface{}{
 		"Title":          "Live Monitor",
 		"PageTitle":      "RADIUS Live Monitor",
@@ -629,6 +657,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		"PendingClients": pendingCount,
 		"TotalVLANs":     len(vlans),
 		"RecentLogs":     recentLogs,
+		"ActiveBans":     activeBans,
 	}
 	s.renderPage(w, r, "dashboard.html", data)
 }
@@ -659,6 +688,13 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	banMap := make(map[string]*models.BanInfo)
+	if s.defense != nil {
+		for _, b := range s.defense.ListActiveBans() {
+			banMap[b.Target] = b
+		}
+	}
+
 	data := map[string]interface{}{
 		"Title":           "MAB Geräte & Benutzer",
 		"PageTitle":       "MAB Geräte & Benutzer",
@@ -671,6 +707,7 @@ func (s *Server) handleClients(w http.ResponseWriter, r *http.Request) {
 		"SelectedStatus":  statusFilter,
 		"SelectedVLAN":    vlanFilter,
 		"SelectedType":    typeFilter,
+		"ActiveBans":      banMap,
 	}
 	s.renderPage(w, r, "clients.html", data)
 }
@@ -846,6 +883,46 @@ func (s *Server) handleReconnectClient(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/clients", http.StatusSeeOther)
 }
 
+func (s *Server) handleSecurityUnban(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	target := r.FormValue("target")
+	if target == "" {
+		target = r.URL.Query().Get("target")
+	}
+	if s.defense != nil && target != "" {
+		s.defense.Unban(target)
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", `{"showToast": "Client aus Quarantäne entsperrt"}`)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/clients", http.StatusSeeOther)
+}
+
+func (s *Server) handleSecurityBan(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	target := r.FormValue("target")
+	if target == "" {
+		target = r.URL.Query().Get("target")
+	}
+	if s.defense != nil && target != "" {
+		s.defense.PermanentBan(target)
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Trigger", `{"showToast": "Client dauerhaft gesperrt"}`)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	http.Redirect(w, r, "/clients", http.StatusSeeOther)
+}
+
 func (s *Server) getUniFiClient() (*unifi.Client, error) {
 	settings, err := s.db.GetSettings()
 	if err != nil {
@@ -859,6 +936,23 @@ func (s *Server) getUniFiClient() (*unifi.Client, error) {
 		Password: settings.UniFiPassword,
 		Site:     "default",
 	})
+}
+
+// ReconnectClient implements security.ClientKicker by sending a RFC 5176 Disconnect and UniFi kick.
+func (s *Server) ReconnectClient(clientMAC string) error {
+	clientMAC = strings.ToLower(strings.TrimSpace(clientMAC))
+	if clientMAC == "" {
+		return nil
+	}
+	if client, err := s.db.GetClientByMAC(clientMAC); err == nil && client != nil {
+		s.executePortRestartOrReconnect(client)
+		return nil
+	}
+	unifiClient, err := s.getUniFiClient()
+	if err != nil {
+		return err
+	}
+	return unifiClient.ReconnectClient(clientMAC)
 }
 
 func (s *Server) publishLog(level eventbus.LogLevel, source, msg string) {
@@ -1574,6 +1668,22 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	settings.AutoDisconnectOnChange = r.FormValue("auto_disconnect_on_change") == "1" || r.FormValue("auto_disconnect_on_change") == "on"
 	if s.radiusSrv != nil {
 		s.radiusSrv.SetDebugMode(settings.RadiusDebugMode)
+	}
+
+	// Intrusion Defense & Auto-Quarantine (Fail2ban)
+	settings.DefenseEnabled = r.FormValue("defense_enabled") == "1" || r.FormValue("defense_enabled") == "on"
+	if maxF, err := strconv.Atoi(r.FormValue("defense_max_failures")); err == nil && maxF > 0 {
+		settings.DefenseMaxFailures = maxF
+	}
+	if winS, err := strconv.Atoi(r.FormValue("defense_window_seconds")); err == nil && winS > 0 {
+		settings.DefenseWindowSeconds = winS
+	}
+	if banM, err := strconv.Atoi(r.FormValue("defense_ban_duration_minutes")); err == nil && banM > 0 {
+		settings.DefenseBanDurationMinutes = banM
+	}
+	settings.DefenseMACSpoofDetection = r.FormValue("defense_mac_spoof_detection") == "1" || r.FormValue("defense_mac_spoof_detection") == "on"
+	if s.defense != nil {
+		s.defense.ApplySettings(settings)
 	}
 
 	if wPort, err := strconv.Atoi(r.FormValue("web_port")); err == nil && wPort > 0 {

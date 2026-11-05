@@ -26,6 +26,7 @@ type Service struct {
 	haClient    *HomeAssistantClient
 	dailyWorker *DailyWorker
 	queue       chan NotificationEvent
+	secMgr      SecurityManager
 	mu          sync.RWMutex
 	ctx         context.Context
 	tgCancel    context.CancelFunc
@@ -63,6 +64,7 @@ func (s *Service) Reload() error {
 	if settings.TelegramEnabled && settings.TelegramBotToken != "" {
 		tg, err := NewTelegramClient(settings.TelegramBotToken, settings.TelegramChatIDs, s.db, s.syncSvc)
 		if err == nil {
+			tg.SetSecurityManager(s.secMgr)
 			s.tgClient = tg
 			if s.ctx != nil {
 				tgCtx, tgCancel := context.WithCancel(s.ctx)
@@ -325,3 +327,14 @@ func (s *Service) SendTest(ctx context.Context, provider string) error {
 		return fmt.Errorf("unbekannter provider: %s", provider)
 	}
 }
+
+// SetSecurityManager attaches an intrusion defense manager to forward interactive bot callbacks.
+func (s *Service) SetSecurityManager(sm SecurityManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.secMgr = sm
+	if s.tgClient != nil {
+		s.tgClient.SetSecurityManager(sm)
+	}
+}
+

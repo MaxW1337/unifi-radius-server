@@ -97,3 +97,4 @@ func DisconnectClient(opts DisconnectOptions) error {
 		return fmt.Errorf("unexpected RADIUS code %d in response", respPacket.Code)
 	}
 }
+

@@ -242,3 +242,4 @@ func RecordUniFiSync(success bool, durationSec float64) {
 func Handler(db *database.DB) http.HandlerFunc {
 	return DefaultRegistry.Handler(db)
 }
+
