@@ -8,7 +8,7 @@ import (
 
 // Version is the single source of truth for the application version in Go.
 // When preparing a new release, bump this constant (and the root VERSION file).
-const Version = "1.0.5"
+const Version = "1.0.6"
 
 // Build variables injected at compile time via -ldflags.
 var (
