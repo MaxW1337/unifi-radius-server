@@ -27,6 +27,7 @@ import (
 	"github.com/mwittenburg/unifi-radius-server/pkg/database"
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
 	"github.com/mwittenburg/unifi-radius-server/pkg/i18n"
+	"github.com/mwittenburg/unifi-radius-server/pkg/metrics"
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
 	"github.com/mwittenburg/unifi-radius-server/pkg/notify"
 	"github.com/mwittenburg/unifi-radius-server/pkg/radius"
@@ -245,6 +246,9 @@ func NewServer(db *database.DB, bus *eventbus.Bus, syncSvc *unifi.SyncService, p
 
 	// WebSocket endpoint (protected by session check)
 	mux.HandleFunc("/ws/feed", s.handleWebSocket)
+
+	// Prometheus metrics endpoint (unauthenticated for internal scrape)
+	mux.HandleFunc("/metrics", metrics.Handler(s.db))
 
 	// Protected pages
 	mux.HandleFunc("/", s.requireAuth(s.handleDashboard))
@@ -761,7 +765,10 @@ func (s *Server) handleUpdateClient(w http.ResponseWriter, r *http.Request) {
 	_ = s.db.UpdateClient(c)
 
 	reconnect := r.FormValue("reconnect")
-	if reconnect == "1" || reconnect == "true" {
+	settings, _ := s.db.GetSettings()
+	autoDisconnect := settings != nil && settings.AutoDisconnectOnChange
+
+	if reconnect == "1" || reconnect == "true" || autoDisconnect {
 		go s.executePortRestartOrReconnect(c)
 	}
 
@@ -908,6 +915,27 @@ func (s *Server) executePortRestartOrReconnect(c *models.Client) {
 	}
 
 	if c.MACAddress != "" {
+		// Attempt RFC 5176 RADIUS Disconnect-Request (UDP 3799) if secret configured
+		if settings, err := s.db.GetSettings(); err == nil && settings.GlobalSharedSecret != "" {
+			targets := []string{}
+			if c.UniFiIP != "" {
+				targets = append(targets, c.UniFiIP)
+			}
+			targets = append(targets, "127.0.0.1")
+			for _, target := range targets {
+				discErr := radius.DisconnectClient(radius.DisconnectOptions{
+					NASAddr:   target + ":3799",
+					Secret:    settings.GlobalSharedSecret,
+					ClientMAC: c.MACAddress,
+					Timeout:   500 * time.Millisecond,
+				})
+				if discErr == nil {
+					s.publishLog(eventbus.LogLevelInfo, "CLIENT-ACTION", fmt.Sprintf("RFC 5176 Disconnect-Request an %s gesendet (Client %s getrennt).", target, c.MACAddress))
+					break
+				}
+			}
+		}
+
 		err := unifiClient.ReconnectClient(c.MACAddress)
 		if err != nil {
 			s.publishLog(eventbus.LogLevelWarn, "CLIENT-ACTION", fmt.Sprintf("Reconnect für Client %s fehlgeschlagen: %v", c.MACAddress, err))
@@ -926,6 +954,11 @@ func (s *Server) handleApproveClient(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		c.Status = models.ClientStatusActive
 		_ = s.db.UpdateClient(c)
+
+		settings, _ := s.db.GetSettings()
+		if settings != nil && settings.AutoDisconnectOnChange {
+			go s.executePortRestartOrReconnect(c)
+		}
 	}
 	http.Redirect(w, r, "/clients", http.StatusSeeOther)
 }
@@ -935,7 +968,15 @@ func (s *Server) handleDeleteClient(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	c, _ := s.db.GetClientByID(id)
 	_ = s.db.DeleteClient(id)
+
+	if c != nil && c.MACAddress != "" {
+		settings, _ := s.db.GetSettings()
+		if settings != nil && settings.AutoDisconnectOnChange {
+			go s.executePortRestartOrReconnect(c)
+		}
+	}
 	http.Redirect(w, r, "/clients", http.StatusSeeOther)
 }
 
@@ -1530,6 +1571,7 @@ func (s *Server) handleSaveSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	settings.UnknownMABPolicy = models.UnknownMABPolicy(r.FormValue("unknown_mab_policy"))
 	settings.RadiusDebugMode = r.FormValue("radius_debug_mode") == "1" || r.FormValue("radius_debug_mode") == "on"
+	settings.AutoDisconnectOnChange = r.FormValue("auto_disconnect_on_change") == "1" || r.FormValue("auto_disconnect_on_change") == "on"
 	if s.radiusSrv != nil {
 		s.radiusSrv.SetDebugMode(settings.RadiusDebugMode)
 	}

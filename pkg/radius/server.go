@@ -13,6 +13,7 @@ import (
 
 	"github.com/mwittenburg/unifi-radius-server/pkg/database"
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
+	"github.com/mwittenburg/unifi-radius-server/pkg/metrics"
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
 	"github.com/mwittenburg/unifi-radius-server/pkg/utils"
 	"golang.org/x/crypto/bcrypt"
@@ -374,6 +375,7 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 		// Microsecond in-memory lookup
 		client, clientFound := s.cache.LookupClientByMAC(normMAC)
 		if clientFound && client != nil {
+			metrics.RecordCacheHit()
 			enrichedName = client.UniFiName
 			enrichedVendor = client.UniFiVendor
 
@@ -411,6 +413,7 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 				s.batchWriter.EnqueueLastSeen(client.ID, time.Now())
 			}
 		} else {
+			metrics.RecordCacheMiss()
 			// Unknown MAC address
 			switch settings.UnknownMABPolicy {
 			case models.PolicyAutoAcceptUnknown:
@@ -532,6 +535,13 @@ func (s *Server) handlePacket(data []byte, remoteAddr *net.UDPAddr) {
 	} else {
 		log.Printf("[RADIUS] Failed to encode response: %v", err)
 	}
+
+	// Record Prometheus Metrics
+	statusFormatted := "Accept"
+	if status == "REJECT" {
+		statusFormatted = "Reject"
+	}
+	metrics.RecordRadiusRequest(string(authType), statusFormatted, time.Since(start).Seconds())
 
 	// 4. Asynchronous Non-Blocking Logging & WebSocket Broadcast (Slow Path)
 	authLog := models.AuthLog{

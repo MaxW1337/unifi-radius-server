@@ -131,6 +131,11 @@ var translations = map[string]map[string]string{
 		"clients.reconnect_hint":            "Trennt das Gerät kurz vom Netzwerk, damit die neue VLAN-Zuweisung sofort per DHCP übernommen wird.",
 		"clients.port_restarted":            "Befehl für Port-Neustart & Reconnect an UniFi gesendet.",
 		"clients.client_reconnected":        "Befehl für Client-Reconnect an UniFi gesendet.",
+		"clients.random_mac_badge":          "Private MAC",
+		"clients.random_mac_tooltip":        "Zufällige/private MAC-Adresse erkannt (IEEE U/L-Bit). Bei MAB sollte private MAC im Gerät deaktiviert werden.",
+		"clients.random_mac_hint":           "Hinweis: Dieses Gerät verwendet eine private/randomisierte MAC-Adresse. Bei MAB (MAC-Bypass) kann sich die Adresse ändern. Für dauerhaften Zugriff bitte im Gerät 'Private WLAN-Adresse' deaktivieren.",
+		"settings.auto_disconnect_title":    "Automatisches Trennen (Kick/Re-Auth)",
+		"settings.auto_disconnect_hint":     "Trennt das Gerät automatisch via RADIUS Disconnect (RFC 5176) & UniFi Kick bei Status-, Profil- oder VLAN-Änderung, um sofortige DHCP-Neuzuweisung zu erzwingen.",
 
 		// Certificates
 		"certs.title":               "Zertifikate & Integrierte CA",
@@ -458,6 +463,11 @@ var translations = map[string]map[string]string{
 		"clients.reconnect_hint":            "Briefly disconnects device so new VLAN assignment is immediately applied via DHCP.",
 		"clients.port_restarted":            "Port power-cycle & reconnect command sent to UniFi.",
 		"clients.client_reconnected":        "Client reconnect command sent to UniFi.",
+		"clients.random_mac_badge":          "Private MAC",
+		"clients.random_mac_tooltip":        "Randomized/private MAC address detected (IEEE U/L bit). For MAB, disable private MAC on the client device.",
+		"clients.random_mac_hint":           "Notice: This device uses a private/randomized MAC address. With MAB (MAC Bypass), the address may rotate. For permanent access, disable 'Private Wi-Fi Address' on the device.",
+		"settings.auto_disconnect_title":    "Automatic Disconnect (Kick/Re-Auth)",
+		"settings.auto_disconnect_hint":     "Automatically disconnects device via RADIUS Disconnect (RFC 5176) & UniFi Kick upon status or VLAN change to enforce immediate DHCP re-assignment.",
 
 		// Certificates
 		"certs.title":               "Certificates & Internal CA",

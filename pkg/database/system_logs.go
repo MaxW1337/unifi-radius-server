@@ -212,3 +212,4 @@ func (db *DB) PruneSystemLogs(retentionDays, maxEntries int) (int64, error) {
 
 	return totalDeleted, nil
 }
+

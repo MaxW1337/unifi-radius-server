@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"github.com/mwittenburg/unifi-radius-server/pkg/utils"
+)
 
 // AuthType represents the authentication method used.
 type AuthType string
@@ -60,6 +64,14 @@ func (c *Client) EffectiveVLAN(defaultVLAN int) int {
 		return *c.VLANID
 	}
 	return defaultVLAN
+}
+
+// IsRandomizedMAC returns true if this client has a valid MAC address that is locally administered (randomized/private).
+func (c *Client) IsRandomizedMAC() bool {
+	if c.MACAddress == "" {
+		return false
+	}
+	return utils.IsRandomizedMAC(c.MACAddress)
 }
 
 // VLAN represents a virtual network fetched from the UniFi Network controller.
@@ -130,9 +142,10 @@ type Settings struct {
 	DefaultAllowVLAN   int              `json:"default_allow_vlan"`
 	UnknownMABPolicy   UnknownMABPolicy `json:"unknown_mab_policy"`
 	GlobalSharedSecret string           `json:"global_shared_secret"`
-	RADIUSAuthPort     int              `json:"radius_auth_port"`
-	RadiusDebugMode    bool             `json:"radius_debug_mode"`
-	WebPort            int              `json:"web_port"`
+	RADIUSAuthPort         int              `json:"radius_auth_port"`
+	RadiusDebugMode        bool             `json:"radius_debug_mode"`
+	AutoDisconnectOnChange bool             `json:"auto_disconnect_on_change"`
+	WebPort                int              `json:"web_port"`
 	WebAdminPassword   string           `json:"-"`
 	UniFiURL           string           `json:"unifi_url"`
 	UniFiAuthMode      string           `json:"unifi_auth_mode"` // 'apikey' or 'credentials'

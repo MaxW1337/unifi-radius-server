@@ -875,4 +875,60 @@ func TestHistoricalSystemLogsAndExport(t *testing.T) {
 	}
 }
 
+func TestPrometheusMetricsAndAutoDisconnect(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	// 1. GET /metrics without any auth cookies or headers
+	reqMetrics := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	rrMetrics := httptest.NewRecorder()
+	srv.httpServer.Handler.ServeHTTP(rrMetrics, reqMetrics)
+
+	if rrMetrics.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK from unauthenticated /metrics, got %d", rrMetrics.Code)
+	}
+
+	body := rrMetrics.Body.String()
+	if !strings.Contains(body, "unifi_radius_uptime_seconds") || !strings.Contains(body, "radius_requests_total") {
+		t.Errorf("Expected Prometheus metrics in response, got:\n%s", body)
+	}
+
+	// 2. Test saving auto_disconnect_on_change
+	form := url.Values{
+		"unifi_url":                 {"https://127.0.0.1"},
+		"unifi_auth_mode":           {"apikey"},
+		"unifi_sync_interval":       {"5"},
+		"global_shared_secret":      {"testsecret"},
+		"radius_auth_port":          {"1812"},
+		"default_allow_vlan":        {"10"},
+		"auto_disconnect_on_change": {"1"},
+		"web_port":                  {"9182"},
+		"log_retention_days":        {"30"},
+	}
+	reqSave := httptest.NewRequest(http.MethodPost, "/settings/save", strings.NewReader(form.Encode()))
+	reqSave.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrSave := httptest.NewRecorder()
+	srv.handleSaveSettings(rrSave, reqSave)
+
+	settings, err := db.GetSettings()
+	if err != nil {
+		t.Fatalf("GetSettings failed: %v", err)
+	}
+	if !settings.AutoDisconnectOnChange {
+		t.Errorf("Expected AutoDisconnectOnChange to be true after save, got false")
+	}
+
+	// 3. Test Client IsRandomizedMAC
+	cRandom := &models.Client{MACAddress: "02:00:00:00:00:01"}
+	if !cRandom.IsRandomizedMAC() {
+		t.Errorf("Expected 02:00:00:00:00:01 to be recognized as randomized MAC")
+	}
+
+	cHardware := &models.Client{MACAddress: "FC:EC:DA:11:22:33"}
+	if cHardware.IsRandomizedMAC() {
+		t.Errorf("Expected FC:EC:DA:11:22:33 to be recognized as universal hardware MAC")
+	}
+}
+
+
 

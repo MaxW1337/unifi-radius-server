@@ -21,6 +21,14 @@ const (
 	CodeAccountingReq   = 4
 	CodeAccountingResp  = 5
 	CodeAccessChallenge = 11
+
+	// RFC 5176 Dynamic Authorization Codes
+	CodeDisconnectRequest = 40
+	CodeDisconnectACK     = 41
+	CodeDisconnectNAK     = 42
+	CodeCoARequest        = 43
+	CodeCoAACK            = 44
+	CodeCoANAK            = 45
 )
 
 // Standard RADIUS Attribute Types
@@ -188,10 +196,17 @@ func (p *Packet) Encode(secret []byte) ([]byte, error) {
 		offset += 2 + len(attr.Value)
 	}
 
-	// Calculate Response Authenticator: MD5(Code + ID + Length + RequestAuth + Attributes + Secret)
+	// Calculate Response / Request Authenticator:
+	// For RFC 5176 Disconnect-Request / CoA-Request: MD5(Code + ID + Length + 16 zeroes + Attributes + Secret)
+	// For Standard Responses: MD5(Code + ID + Length + RequestAuth + Attributes + Secret)
 	h := md5.New()
 	h.Write(buf[0:4])
-	h.Write(p.Authenticator[:])
+	if p.Code == CodeDisconnectRequest || p.Code == CodeCoARequest {
+		var zeroes [16]byte
+		h.Write(zeroes[:])
+	} else {
+		h.Write(p.Authenticator[:])
+	}
 	h.Write(buf[20:totalLen])
 	h.Write(secret)
 	respAuth := h.Sum(nil)

@@ -68,6 +68,9 @@
               {{if .MACAddress}}
                 <span class="code-pill copyable" onclick="copyToClipboard('{{.MACAddress}}', this)" title="Klicken zum Kopieren">{{.MACAddress}}</span>
                 <span class="badge dim" style="margin-left: 4px;">MAB</span>
+                {{if .IsRandomizedMAC}}
+                  <span class="badge" style="margin-left: 4px; background: rgba(245, 158, 11, 0.15); color: #f59e0b; border: 1px solid rgba(245, 158, 11, 0.3); font-size: 11px; padding: 2px 6px;" title="{{tr $.Lang "clients.random_mac_tooltip"}}">⚠️ {{tr $.Lang "clients.random_mac_badge"}}</span>
+                {{end}}
               {{else if .Username}}
                 <span class="code-pill copyable" onclick="copyToClipboard('{{.Username}}', this)" title="Klicken zum Kopieren">👤 {{.Username}}</span>
                 {{if eq .AuthType "eap-tls"}}
@@ -240,7 +243,10 @@
       <div class="modal-body">
         <div id="edit-group-mac" class="form-group">
           <label class="form-label">{{tr .Lang "clients.label_mac"}}</label>
-          <input type="text" name="mac_address" id="edit-mac" class="form-control">
+          <input type="text" name="mac_address" id="edit-mac" class="form-control" oninput="checkRandomMac(this.value)">
+          <div id="edit-mac-random-warn" style="display: none; margin-top: 6px; font-size: 11px; color: #f59e0b; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: 4px; padding: 6px 10px;">
+            ⚠️ {{tr .Lang "clients.random_mac_hint"}}
+          </div>
         </div>
 
         <div id="edit-group-user" style="display: none;">
@@ -369,6 +375,7 @@ function openEditModal(id, mac, username, authType, vlan, status, desc, isWired,
   } else {
     document.getElementById('edit-entry-type').value = 'mab';
     document.getElementById('edit-mac').value = mac;
+    checkRandomMac(mac);
     groupMac.style.display = 'block';
     groupUser.style.display = 'none';
     if (reconnectBox) reconnectBox.style.display = 'block';
@@ -405,6 +412,21 @@ function triggerModalReconnect() {
       showToast('{{tr .Lang "clients.client_reconnected"}}');
     })
     .catch(err => console.error(err));
+}
+
+function isRandomizedMAC(mac) {
+  if (!mac) return false;
+  const clean = mac.replace(/[^a-fA-F0-9]/g, '');
+  if (clean.length < 2) return false;
+  const firstByte = parseInt(clean.substring(0, 2), 16);
+  return !isNaN(firstByte) && (firstByte & 0x02) !== 0;
+}
+
+function checkRandomMac(val) {
+  const warn = document.getElementById('edit-mac-random-warn');
+  if (warn) {
+    warn.style.display = isRandomizedMAC(val) ? 'block' : 'none';
+  }
 }
 
 function formatMAC(e) {

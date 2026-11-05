@@ -9,6 +9,7 @@ import (
 
 	"github.com/mwittenburg/unifi-radius-server/pkg/database"
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
+	"github.com/mwittenburg/unifi-radius-server/pkg/metrics"
 )
 
 // SyncService orchestrates periodic and on-demand synchronization with UniFi Network.
@@ -116,6 +117,8 @@ func (s *SyncService) executeSync() error {
 	s.syncMu.Lock()
 	defer s.syncMu.Unlock()
 
+	syncStart := time.Now()
+
 	s.mu.Lock()
 	s.isSyncing = true
 	s.mu.Unlock()
@@ -124,7 +127,9 @@ func (s *SyncService) executeSync() error {
 		s.mu.Lock()
 		s.isSyncing = false
 		s.lastSync = time.Now().UTC()
+		err := s.lastErr
 		s.mu.Unlock()
+		metrics.RecordUniFiSync(err == nil, time.Since(syncStart).Seconds())
 	}()
 
 	s.publishLog(eventbus.LogLevelInfo, "Synchronisation mit UniFi Network gestartet...")

@@ -57,3 +57,19 @@ func IsValidMAC(input string) bool {
 	return err == nil
 }
 
+// IsRandomizedMAC returns true if the MAC address is locally administered (private/randomized),
+// according to IEEE 802 standards (U/L bit, bit 1 of the first octet is set to 1).
+func IsRandomizedMAC(input string) bool {
+	normalized, err := NormalizeMAC(input)
+	if err != nil {
+		return false
+	}
+	hw, err := net.ParseMAC(normalized)
+	if err != nil || len(hw) < 1 {
+		return false
+	}
+	// Check U/L bit (Locally Administered Bit)
+	return (hw[0] & 0x02) != 0
+}
+
+

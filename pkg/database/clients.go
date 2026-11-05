@@ -357,4 +357,40 @@ func (db *DB) CountClients() (total int, migrated int, err error) {
 	return total, migrated, nil
 }
 
+// EntityCounts represents database record totals for Prometheus metrics.
+type EntityCounts struct {
+	ClientsActive   int
+	ClientsPending  int
+	ClientsDisabled int
+	TotalAuthLogs   int
+	TotalSystemLogs int
+}
+
+// GetEntityCounts queries counts of clients and log tables.
+func (db *DB) GetEntityCounts() (EntityCounts, error) {
+	var counts EntityCounts
+	rows, err := db.Query("SELECT status, COUNT(*) FROM clients GROUP BY status")
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var st string
+			var c int
+			if err := rows.Scan(&st, &c); err == nil {
+				switch st {
+				case "active":
+					counts.ClientsActive = c
+				case "pending":
+					counts.ClientsPending = c
+				case "disabled", "blocked":
+					counts.ClientsDisabled += c
+				}
+			}
+		}
+	}
+	_ = db.QueryRow("SELECT COUNT(*) FROM auth_logs").Scan(&counts.TotalAuthLogs)
+	_ = db.QueryRow("SELECT COUNT(*) FROM system_logs").Scan(&counts.TotalSystemLogs)
+	return counts, nil
+}
+
+
 
