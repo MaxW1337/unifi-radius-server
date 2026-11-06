@@ -296,6 +296,50 @@ func TestCertificates(t *testing.T) {
 	if err != ErrCertNotFound {
 		t.Errorf("Expected revoked CA not to be returned as active CA, got %v", err)
 	}
+
+	// Test client cert with optional P12Password
+	clientCertWithPass := &models.Certificate{
+		SerialNumber:   "2001",
+		CommonName:     "client.with.pass",
+		CertType:       "client",
+		CertificatePEM: "-----BEGIN CERTIFICATE-----\nCLIENT1...\n-----END CERTIFICATE-----",
+		PrivateKeyPEM:  "-----BEGIN RSA PRIVATE KEY-----\nKEY1...\n-----END RSA PRIVATE KEY-----",
+		P12Password:    "MySecret123",
+		IssuedAt:       time.Now().UTC(),
+		ExpiresAt:      time.Now().UTC().AddDate(1, 0, 0),
+	}
+	if err := db.SaveCertificate(clientCertWithPass); err != nil {
+		t.Fatalf("SaveCertificate client with pass failed: %v", err)
+	}
+	loaded1, err := db.GetCertificateBySerial("2001")
+	if err != nil {
+		t.Fatalf("GetCertificateBySerial 2001 failed: %v", err)
+	}
+	if loaded1.P12Password != "MySecret123" {
+		t.Errorf("Expected P12Password 'MySecret123', got %q", loaded1.P12Password)
+	}
+
+	// Test client cert without P12Password (empty/optional)
+	clientCertNoPass := &models.Certificate{
+		SerialNumber:   "2002",
+		CommonName:     "client.no.pass",
+		CertType:       "client",
+		CertificatePEM: "-----BEGIN CERTIFICATE-----\nCLIENT2...\n-----END CERTIFICATE-----",
+		PrivateKeyPEM:  "-----BEGIN RSA PRIVATE KEY-----\nKEY2...\n-----END RSA PRIVATE KEY-----",
+		P12Password:    "",
+		IssuedAt:       time.Now().UTC(),
+		ExpiresAt:      time.Now().UTC().AddDate(1, 0, 0),
+	}
+	if err := db.SaveCertificate(clientCertNoPass); err != nil {
+		t.Fatalf("SaveCertificate client no pass failed: %v", err)
+	}
+	loaded2, err := db.GetCertificateBySerial("2002")
+	if err != nil {
+		t.Fatalf("GetCertificateBySerial 2002 failed: %v", err)
+	}
+	if loaded2.P12Password != "" {
+		t.Errorf("Expected empty P12Password, got %q", loaded2.P12Password)
+	}
 }
 
 func TestAuthLogsMultiFieldSearchAndRaw(t *testing.T) {

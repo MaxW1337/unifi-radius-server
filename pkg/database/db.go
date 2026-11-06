@@ -114,6 +114,7 @@ func (db *DB) migrate() error {
 		cert_type TEXT NOT NULL,
 		certificate_pem TEXT NOT NULL,
 		private_key_pem TEXT,
+		p12_password TEXT DEFAULT '',
 		client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
 		issued_at DATETIME NOT NULL,
 		expires_at DATETIME NOT NULL,
@@ -174,6 +175,7 @@ func (db *DB) migrate() error {
 	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN raw_request TEXT DEFAULT '';")
 	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN raw_response TEXT DEFAULT '';")
 	_, _ = db.Exec("ALTER TABLE auth_logs ADD COLUMN nas_name TEXT DEFAULT '';")
+	_, _ = db.Exec("ALTER TABLE certificates ADD COLUMN p12_password TEXT DEFAULT '';")
 
 	return nil
 }

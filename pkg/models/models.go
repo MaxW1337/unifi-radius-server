@@ -102,6 +102,7 @@ type Certificate struct {
 	CertType       string     `json:"cert_type"` // 'ca', 'server', 'client'
 	CertificatePEM string     `json:"certificate_pem"`
 	PrivateKeyPEM  string     `json:"-"`
+	P12Password    string     `json:"p12_password,omitempty"`
 	ClientID       *int64     `json:"client_id,omitempty"`
 	IssuedAt       time.Time  `json:"issued_at"`
 	ExpiresAt      time.Time  `json:"expires_at"`

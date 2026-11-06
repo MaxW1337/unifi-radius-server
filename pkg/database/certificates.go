@@ -17,17 +17,18 @@ func (db *DB) SaveCertificate(c *models.Certificate) error {
 	res, err := db.Exec(`
 		INSERT INTO certificates (
 			serial_number, common_name, cert_type, certificate_pem, private_key_pem,
-			client_id, issued_at, expires_at, is_revoked, revoked_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			p12_password, client_id, issued_at, expires_at, is_revoked, revoked_at
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(serial_number) DO UPDATE SET
 			common_name = excluded.common_name,
 			certificate_pem = excluded.certificate_pem,
 			private_key_pem = COALESCE(excluded.private_key_pem, certificates.private_key_pem),
+			p12_password = excluded.p12_password,
 			is_revoked = excluded.is_revoked,
 			revoked_at = excluded.revoked_at
 	`,
 		c.SerialNumber, c.CommonName, c.CertType, c.CertificatePEM, c.PrivateKeyPEM,
-		c.ClientID, c.IssuedAt.UTC(), c.ExpiresAt.UTC(), c.IsRevoked, c.RevokedAt,
+		c.P12Password, c.ClientID, c.IssuedAt.UTC(), c.ExpiresAt.UTC(), c.IsRevoked, c.RevokedAt,
 	)
 	if err != nil {
 		return err
@@ -43,7 +44,7 @@ func (db *DB) SaveCertificate(c *models.Certificate) error {
 func (db *DB) GetCertificateBySerial(serial string) (*models.Certificate, error) {
 	row := db.QueryRow(`
 		SELECT id, serial_number, common_name, cert_type, certificate_pem, private_key_pem,
-		       client_id, issued_at, expires_at, is_revoked, revoked_at
+		       p12_password, client_id, issued_at, expires_at, is_revoked, revoked_at
 		FROM certificates WHERE serial_number = ?
 	`, serial)
 	return scanCertificate(row)
@@ -53,7 +54,7 @@ func (db *DB) GetCertificateBySerial(serial string) (*models.Certificate, error)
 func (db *DB) GetActiveCACertificate() (*models.Certificate, error) {
 	row := db.QueryRow(`
 		SELECT id, serial_number, common_name, cert_type, certificate_pem, private_key_pem,
-		       client_id, issued_at, expires_at, is_revoked, revoked_at
+		       p12_password, client_id, issued_at, expires_at, is_revoked, revoked_at
 		FROM certificates
 		WHERE cert_type = 'ca' AND is_revoked = 0
 		ORDER BY id DESC LIMIT 1
@@ -65,7 +66,7 @@ func (db *DB) GetActiveCACertificate() (*models.Certificate, error) {
 func (db *DB) GetActiveServerCertificate() (*models.Certificate, error) {
 	row := db.QueryRow(`
 		SELECT id, serial_number, common_name, cert_type, certificate_pem, private_key_pem,
-		       client_id, issued_at, expires_at, is_revoked, revoked_at
+		       p12_password, client_id, issued_at, expires_at, is_revoked, revoked_at
 		FROM certificates
 		WHERE cert_type = 'server' AND is_revoked = 0
 		ORDER BY id DESC LIMIT 1
@@ -77,7 +78,7 @@ func (db *DB) GetActiveServerCertificate() (*models.Certificate, error) {
 func (db *DB) ListCertificates(certType string) ([]models.Certificate, error) {
 	query := `
 		SELECT id, serial_number, common_name, cert_type, certificate_pem, private_key_pem,
-		       client_id, issued_at, expires_at, is_revoked, revoked_at
+		       p12_password, client_id, issued_at, expires_at, is_revoked, revoked_at
 		FROM certificates
 	`
 	var rows *sql.Rows
@@ -101,14 +102,16 @@ func (db *DB) ListCertificates(certType string) ([]models.Certificate, error) {
 		var c models.Certificate
 		var revAt sql.NullTime
 		var privKey sql.NullString
+		var p12Pass sql.NullString
 		err := rows.Scan(
 			&c.ID, &c.SerialNumber, &c.CommonName, &c.CertType, &c.CertificatePEM,
-			&privKey, &c.ClientID, &c.IssuedAt, &c.ExpiresAt, &c.IsRevoked, &revAt,
+			&privKey, &p12Pass, &c.ClientID, &c.IssuedAt, &c.ExpiresAt, &c.IsRevoked, &revAt,
 		)
 		if err != nil {
 			return nil, err
 		}
 		c.PrivateKeyPEM = privKey.String
+		c.P12Password = p12Pass.String
 		if revAt.Valid {
 			c.RevokedAt = &revAt.Time
 		}
@@ -128,10 +131,11 @@ func scanCertificate(row *sql.Row) (*models.Certificate, error) {
 	var c models.Certificate
 	var revAt sql.NullTime
 	var privKey sql.NullString
+	var p12Pass sql.NullString
 
 	err := row.Scan(
 		&c.ID, &c.SerialNumber, &c.CommonName, &c.CertType, &c.CertificatePEM,
-		&privKey, &c.ClientID, &c.IssuedAt, &c.ExpiresAt, &c.IsRevoked, &revAt,
+		&privKey, &p12Pass, &c.ClientID, &c.IssuedAt, &c.ExpiresAt, &c.IsRevoked, &revAt,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -140,6 +144,7 @@ func scanCertificate(row *sql.Row) (*models.Certificate, error) {
 		return nil, err
 	}
 	c.PrivateKeyPEM = privKey.String
+	c.P12Password = p12Pass.String
 	if revAt.Valid {
 		c.RevokedAt = &revAt.Time
 	}

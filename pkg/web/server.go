@@ -1247,6 +1247,7 @@ func (s *Server) handleIssueCert(w http.ResponseWriter, r *http.Request) {
 		CertType:       "client",
 		CertificatePEM: certPEM,
 		PrivateKeyPEM:  keyPEM,
+		P12Password:    password,
 		IssuedAt:       time.Now().UTC(),
 		ExpiresAt:      time.Now().UTC().AddDate(0, 0, valDays),
 	}
@@ -1321,7 +1322,14 @@ func (s *Server) handleDownloadP12(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p12Bytes, err := ca.ExportPKCS12(cert.CertificatePEM, cert.PrivateKeyPEM, caCert.CertificatePEM, "password")
+	var pass string
+	if r.URL.Query().Has("password") {
+		pass = r.URL.Query().Get("password")
+	} else {
+		pass = cert.P12Password
+	}
+
+	p12Bytes, err := ca.ExportPKCS12(cert.CertificatePEM, cert.PrivateKeyPEM, caCert.CertificatePEM, pass)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Export error: %v", err), http.StatusInternalServerError)
 		return
@@ -1346,13 +1354,18 @@ func (s *Server) handleDownloadMobileConfig(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	p12Bytes, err := ca.ExportPKCS12(cert.CertificatePEM, cert.PrivateKeyPEM, caCert.CertificatePEM, "")
+	pass := cert.P12Password
+	if r.URL.Query().Has("password") {
+		pass = r.URL.Query().Get("password")
+	}
+
+	p12Bytes, err := ca.ExportPKCS12(cert.CertificatePEM, cert.PrivateKeyPEM, caCert.CertificatePEM, pass)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("P12 error: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	mobileConfig, err := ca.GenerateAppleMobileConfig(cert.CommonName, "UniFi-Enterprise", p12Bytes, caCert.CertificatePEM, "")
+	mobileConfig, err := ca.GenerateAppleMobileConfig(cert.CommonName, "UniFi-Enterprise", p12Bytes, caCert.CertificatePEM, pass)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Config error: %v", err), http.StatusInternalServerError)
 		return

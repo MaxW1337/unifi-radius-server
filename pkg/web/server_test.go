@@ -10,10 +10,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/mwittenburg/unifi-radius-server/pkg/ca"
 	"github.com/mwittenburg/unifi-radius-server/pkg/database"
 	"github.com/mwittenburg/unifi-radius-server/pkg/eventbus"
 	"github.com/mwittenburg/unifi-radius-server/pkg/models"
 	"github.com/mwittenburg/unifi-radius-server/pkg/unifi"
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 func setupTestWebServer(t *testing.T) (*Server, *database.DB) {
@@ -1231,6 +1233,142 @@ func TestSessionLongevityAndCookiePersistence(t *testing.T) {
 	}
 	if settings.WebSessionDurationDays != 60 {
 		t.Errorf("Expected WebSessionDurationDays=60, got %d", settings.WebSessionDurationDays)
+	}
+}
+
+func TestCertificateIssuanceAndP12DownloadOptionalPassword(t *testing.T) {
+	srv, db := setupTestWebServer(t)
+	defer db.Close()
+
+	// 1. Initialize Root CA
+	rootCA, err := ca.GenerateCA("Test UniFi Root CA", 10)
+	if err != nil {
+		t.Fatalf("GenerateCA failed: %v", err)
+	}
+	caRecord := &models.Certificate{
+		SerialNumber:   "1",
+		CommonName:     "Test UniFi Root CA",
+		CertType:       "ca",
+		CertificatePEM: rootCA.RootCertPEM,
+		PrivateKeyPEM:  rootCA.RootKeyPEM,
+		IssuedAt:       time.Now().UTC(),
+		ExpiresAt:      time.Now().UTC().AddDate(10, 0, 0),
+	}
+	if err := db.SaveCertificate(caRecord); err != nil {
+		t.Fatalf("SaveCertificate for CA failed: %v", err)
+	}
+
+	// 2. Issue client certificate with EMPTY/OPTIONAL password
+	formNoPass := url.Values{
+		"common_name":   {"user.no.pass"},
+		"password":      {""}, // Empty password!
+		"ssid":          {"UniFi-Enterprise"},
+		"validity_days": {"365"},
+	}
+	reqNoPass := httptest.NewRequest(http.MethodPost, "/certificates/issue", strings.NewReader(formNoPass.Encode()))
+	reqNoPass.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrNoPass := httptest.NewRecorder()
+	srv.handleIssueCert(rrNoPass, reqNoPass)
+	if rrNoPass.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect 303, got %d", rrNoPass.Code)
+	}
+
+	certs, err := db.ListCertificates("client")
+	if err != nil || len(certs) != 1 {
+		t.Fatalf("Expected 1 client cert, got %d (err: %v)", len(certs), err)
+	}
+	certNoPass := certs[0]
+	if certNoPass.CommonName != "user.no.pass" {
+		t.Errorf("Expected CommonName 'user.no.pass', got %q", certNoPass.CommonName)
+	}
+	if certNoPass.P12Password != "" {
+		t.Errorf("Expected empty P12Password, got %q", certNoPass.P12Password)
+	}
+
+	// 3. Download .p12 for user.no.pass -> must decode with empty password
+	reqDownNoPass := httptest.NewRequest(http.MethodGet, "/certificates/download-p12?serial="+certNoPass.SerialNumber, nil)
+	rrDownNoPass := httptest.NewRecorder()
+	srv.handleDownloadP12(rrDownNoPass, reqDownNoPass)
+	if rrDownNoPass.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK downloading .p12, got %d: %s", rrDownNoPass.Code, rrDownNoPass.Body.String())
+	}
+	if rrDownNoPass.Header().Get("Content-Type") != "application/x-pkcs12" {
+		t.Errorf("Expected Content-Type 'application/x-pkcs12', got %q", rrDownNoPass.Header().Get("Content-Type"))
+	}
+	p12BytesNoPass := rrDownNoPass.Body.Bytes()
+	_, _, _, err = pkcs12.DecodeChain(p12BytesNoPass, "")
+	if err != nil {
+		t.Fatalf("Failed to decode PKCS#12 bundle created with empty password: %v", err)
+	}
+
+	// 4. Issue client certificate with custom password
+	formWithPass := url.Values{
+		"common_name":   {"user.with.pass"},
+		"password":      {"MySecretPassword123"},
+		"ssid":          {"Corp-Wi-Fi"},
+		"validity_days": {"180"},
+	}
+	reqWithPass := httptest.NewRequest(http.MethodPost, "/certificates/issue", strings.NewReader(formWithPass.Encode()))
+	reqWithPass.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	rrWithPass := httptest.NewRecorder()
+	srv.handleIssueCert(rrWithPass, reqWithPass)
+	if rrWithPass.Code != http.StatusSeeOther {
+		t.Fatalf("Expected redirect 303, got %d", rrWithPass.Code)
+	}
+
+	certsAll, err := db.ListCertificates("client")
+	if err != nil || len(certsAll) != 2 {
+		t.Fatalf("Expected 2 client certs, got %d (err: %v)", len(certsAll), err)
+	}
+	var certWithPass *models.Certificate
+	for i := range certsAll {
+		if certsAll[i].CommonName == "user.with.pass" {
+			certWithPass = &certsAll[i]
+			break
+		}
+	}
+	if certWithPass == nil {
+		t.Fatal("user.with.pass certificate not found in DB")
+	}
+	if certWithPass.P12Password != "MySecretPassword123" {
+		t.Errorf("Expected P12Password 'MySecretPassword123', got %q", certWithPass.P12Password)
+	}
+
+	// 5. Download .p12 for user.with.pass -> must decode with "MySecretPassword123"
+	reqDownWithPass := httptest.NewRequest(http.MethodGet, "/certificates/download-p12?serial="+certWithPass.SerialNumber, nil)
+	rrDownWithPass := httptest.NewRecorder()
+	srv.handleDownloadP12(rrDownWithPass, reqDownWithPass)
+	if rrDownWithPass.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK downloading .p12 with pass, got %d: %s", rrDownWithPass.Code, rrDownWithPass.Body.String())
+	}
+	p12BytesWithPass := rrDownWithPass.Body.Bytes()
+	_, _, _, err = pkcs12.DecodeChain(p12BytesWithPass, "MySecretPassword123")
+	if err != nil {
+		t.Fatalf("Failed to decode PKCS#12 bundle created with password 'MySecretPassword123': %v", err)
+	}
+
+	// 6. Download .p12 with URL override parameter: ?password=AdHocPassword
+	reqDownOverride := httptest.NewRequest(http.MethodGet, "/certificates/download-p12?serial="+certWithPass.SerialNumber+"&password=AdHocPassword", nil)
+	rrDownOverride := httptest.NewRecorder()
+	srv.handleDownloadP12(rrDownOverride, reqDownOverride)
+	if rrDownOverride.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK, got %d", rrDownOverride.Code)
+	}
+	_, _, _, err = pkcs12.DecodeChain(rrDownOverride.Body.Bytes(), "AdHocPassword")
+	if err != nil {
+		t.Fatalf("Failed to decode PKCS#12 bundle created with override password: %v", err)
+	}
+
+	// 7. Download .mobileconfig -> should produce valid payload
+	reqMobile := httptest.NewRequest(http.MethodGet, "/certificates/download-mobileconfig?serial="+certWithPass.SerialNumber, nil)
+	rrMobile := httptest.NewRecorder()
+	srv.handleDownloadMobileConfig(rrMobile, reqMobile)
+	if rrMobile.Code != http.StatusOK {
+		t.Fatalf("Expected 200 OK downloading .mobileconfig, got %d", rrMobile.Code)
+	}
+	mobileContent := rrMobile.Body.String()
+	if !strings.Contains(mobileContent, "MySecretPassword123") {
+		t.Errorf("Expected mobileconfig to contain embedded P12 password 'MySecretPassword123'")
 	}
 }
 

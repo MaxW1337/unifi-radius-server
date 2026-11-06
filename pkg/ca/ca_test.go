@@ -95,4 +95,21 @@ func TestCAGenerationAndIssuing(t *testing.T) {
 	if reloadedCA.RootCert.SerialNumber.Cmp(ca.RootCert.SerialNumber) != 0 {
 		t.Error("Reloaded CA serial number mismatch")
 	}
+
+	// 7. Test ExportPKCS12 with and without password (optional password support)
+	p12WithPass, err := ExportPKCS12(clientCertPEM, clientKeyPEM, ca.RootCertPEM, "Secret123")
+	if err != nil {
+		t.Fatalf("ExportPKCS12 with password failed: %v", err)
+	}
+	if len(p12WithPass) == 0 {
+		t.Fatal("Expected non-empty p12 data")
+	}
+
+	p12WithoutPass, err := ExportPKCS12(clientCertPEM, clientKeyPEM, ca.RootCertPEM, "")
+	if err != nil {
+		t.Fatalf("ExportPKCS12 without password failed: %v", err)
+	}
+	if len(p12WithoutPass) == 0 {
+		t.Fatal("Expected non-empty p12 data with empty password")
+	}
 }
